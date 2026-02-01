@@ -1,0 +1,10 @@
+[package]
+name = "recursive_verifier"
+type = "bin"
+authors = ["Cloak Team"]
+compiler_version = ">=0.30.0"
+
+[dependencies]
+# bb_proof_verification from Aztec - provides verify_honk_proof for UltraHonk
+# Must match bb.js version exactly for recursive verification to work
+bb_proof_verification = { git = "https://github.com/AztecProtocol/aztec-packages/", tag = "v3.0.0-nightly.20260102", directory = "barretenberg/noir/bb_proof_verification" }

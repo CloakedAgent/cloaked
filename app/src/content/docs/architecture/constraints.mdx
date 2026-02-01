@@ -1,0 +1,129 @@
+---
+title: "Constraint System"
+description: "Understanding and configuring spending constraints."
+order: 2
+---
+
+## Constraint Types
+
+### Max Per Transaction (`maxPerTx`)
+
+Maximum SOL for any single transaction.
+
+```typescript
+maxPerTx: 100_000_000  // 0.1 SOL
+```
+
+### Daily Limit (`dailyLimit`)
+
+Maximum in a 24-hour period (resets at unix day boundary).
+
+```typescript
+dailyLimit: 500_000_000  // 0.5 SOL
+```
+
+### Total Limit (`totalLimit`)
+
+Maximum SOL the agent can ever spend (lifetime).
+
+```typescript
+totalLimit: 1_000_000_000  // 1 SOL
+```
+
+### Expiration (`expiresAt`)
+
+When the agent stops working (null = never expires).
+
+```typescript
+expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)  // 7 days
+```
+
+## Unlimited Constraints
+
+Set any constraint to `0` for unlimited:
+
+```typescript
+{
+  maxPerTx: 0,        // No per-transaction limit
+  dailyLimit: 0,      // No daily limit
+  totalLimit: 0,      // No lifetime limit
+  expiresAt: null,    // Never expires
+}
+```
+
+<Callout type="warning">
+Unlimited constraints should be used carefully. Always set at least one meaningful limit.
+</Callout>
+
+## Constraint Hierarchy
+
+All constraints are checked for every `spend` transaction in this order:
+
+<Steps>
+  <span>Frozen check: Is the agent frozen?</span>
+  <span>Expiration check: Is the agent still valid?</span>
+  <span>Per-TX check: Is this transaction within `maxPerTx`?</span>
+  <span>Daily reset: Reset `dailySpent` if new day</span>
+  <span>Daily check: Will this exceed today's `dailyLimit`?</span>
+  <span>Total check: Will this exceed lifetime `totalLimit`?</span>
+</Steps>
+
+<Callout type="tip">
+For sensible configuration, ensure: `maxPerTx` ≤ `dailyLimit` ≤ `totalLimit`
+</Callout>
+
+## Example Configurations
+
+### Conservative (Testing)
+
+For initial testing or low-risk use cases:
+
+```typescript
+{
+  maxPerTx: 10_000_000,      // 0.01 SOL
+  dailyLimit: 50_000_000,    // 0.05 SOL
+  totalLimit: 100_000_000,   // 0.1 SOL
+  expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+}
+```
+
+### Standard (Active Agent)
+
+For production AI agents:
+
+```typescript
+{
+  maxPerTx: 100_000_000,     // 0.1 SOL
+  dailyLimit: 500_000_000,   // 0.5 SOL
+  totalLimit: 2_000_000_000, // 2 SOL
+  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+}
+```
+
+### High-Volume (Automated Systems)
+
+For trusted automation with higher throughput:
+
+```typescript
+{
+  maxPerTx: 500_000_000,      // 0.5 SOL
+  dailyLimit: 5_000_000_000,  // 5 SOL
+  totalLimit: 50_000_000_000, // 50 SOL
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+}
+```
+
+## Updating Constraints
+
+Owners can update constraints at any time:
+
+```typescript
+await agent.updateConstraints(ownerSigner, {
+  dailyLimit: 1_000_000_000,  // Increase to 1 SOL/day
+  expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // Extend 14 days
+});
+```
+
+<Callout type="info">
+Updates take effect immediately. No restart or recreation needed.
+</Callout>

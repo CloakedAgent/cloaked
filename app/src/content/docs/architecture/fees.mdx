@@ -1,0 +1,112 @@
+---
+title: "Fee Structure"
+description: "Understanding Cloaked's fee model and the relayer system."
+order: 3
+---
+
+## Overview
+
+Cloaked has minimal fees to cover operational costs. Understanding the fee structure helps you optimize costs.
+
+## Why Relayer?
+
+Cloaked uses a relayer for spend transactions because:
+
+1. **PDAs can't pay fees** - The vault is a PDA (Program Derived Address) with no private key
+2. **Delegate has 0 SOL** - The agent keypair only signs, it doesn't hold SOL
+3. **Atomic reimbursement** - Relayer fronts the fee, vault reimburses in the same transaction
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Spend Transaction                               │
+│                                                  │
+│  1. Relayer pays tx fee (~5k lamports)           │
+│  2. Vault transfers: amount + 10k lamports       │
+│  3. 10k goes to relayer (reimbursement)          │
+│  4. Rest goes to destination                     │
+└──────────────────────────────────────────────────────┘
+```
+
+## Spend Fee
+
+Each spend transaction includes a small reimbursement:
+
+```
+SPEND_FEE_REIMBURSEMENT = 10,000 lamports (~0.00001 SOL)
+```
+
+This covers the relayer's transaction fee plus a small margin.
+
+**Effective cost per spend:** amount + ~0.00001 SOL
+
+## Bring Your Own Fee Payer
+
+SDK users can bypass the relayer entirely:
+
+```typescript
+await agent.spend({
+  destination,
+  amount,
+  feePayer: myWalletKeypair,  // Your wallet pays ~5k lamports
+});
+```
+
+**Benefits:**
+- No relayer dependency
+- Slightly lower fees (~5k vs 10k lamports)
+- Direct transactions
+
+## Agent Creation Fees
+
+### Standard Agent (Direct)
+
+Only pay Solana rent for account creation:
+
+```
+Rent: ~0.00138 SOL (one-time, reclaimable on close)
+```
+
+### Private Agent (Via Relayer)
+
+When creating through the Cloaked relayer:
+
+```
+CREATION_FEE = 0.01 SOL
+```
+
+This covers:
+- Account rent (~0.00138 SOL)
+- Relayer operational costs
+- Transaction fees
+
+**Total to send:** 0.01 SOL (minimum) + desired vault funding
+
+## Private Operation Fee
+
+ZK proof operations have a small fee:
+
+```
+PRIVATE_OPERATION_FEE = 50,000 lamports (~0.00005 SOL)
+```
+
+This covers gas for ZK verification on-chain.
+
+## Cost Comparison
+
+| Operation | Via Relayer | Direct (Your Fee Payer) |
+|-----------|-------------|-------------------------|
+| Spend | ~10k lamports | ~5k lamports |
+| Create (standard) | N/A | Rent only (~0.00138 SOL) |
+| Create (private) | 0.01 SOL | Rent only (~0.00138 SOL) |
+| Private operations | 50k lamports | 50k lamports |
+
+## Rent Recovery
+
+When you close an agent:
+
+- **Standard mode:** All rent returned to owner
+- **Private mode (via relayer):** Rent goes to relayer (recovers creation cost)
+
+<Callout type="tip">
+For high-frequency spending, using your own fee payer can save significant costs over time.
+</Callout>

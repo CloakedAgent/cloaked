@@ -1,0 +1,104 @@
+---
+title: "Dual-Mode System"
+description: "Understanding Cloaked's standard and private agent modes."
+order: 1
+---
+
+## Two Privacy Modes
+
+Cloaked supports two operating modes to match different privacy needs:
+
+### Standard Mode
+
+- Owner wallet **publicly linked** to agent on-chain
+- Simpler setup - just sign transactions
+- Lower fees (no ZK overhead)
+- Best for: internal tools, testing, team spending
+
+### Private Mode
+
+- **Zero-knowledge proofs** hide ownership
+- Agent linked to hashed commitment, not your wallet
+- Higher privacy
+- Best for: anonymous agents, sensitive operations
+
+## How Privacy Works
+
+### Standard Mode
+
+```
+On-chain state:
+├── owner: 5xK9abc...  ← Your wallet address (visible)
+├── delegate: HN7cAB...
+└── constraints: ...
+```
+
+Anyone can see who owns the agent by reading the on-chain account.
+
+### Private Mode
+
+```
+On-chain state:
+├── owner: 1111111...  ← System program (null)
+├── owner_commitment: 7f3a8b...  ← Hash of your secret
+├── delegate: HN7cAB...
+└── constraints: ...
+```
+
+Your wallet never appears. To prove ownership, you generate a ZK proof showing you know the preimage of the commitment.
+
+## Master Secret Derivation
+
+Private mode uses a deterministic master secret derived from your wallet:
+
+<Steps>
+  <span>Sign a specific message with your wallet</span>
+  <span>Derive master secret from signature</span>
+  <span>Derive per-agent secrets using nonce (0, 1, 2...)</span>
+  <span>Generate commitment: `hash(agentSecret)`</span>
+</Steps>
+
+```typescript
+import { deriveMasterSecret } from "@cloakedagent/sdk";
+
+// Pass wallet's signMessage function - SDK handles the rest
+const masterSecret = await deriveMasterSecret(wallet.signMessage);
+```
+
+<Callout type="info" title="Your Wallet = Your Key">
+The master secret is deterministically derived from your wallet signature. Same wallet always produces the same master secret - you can re-derive it anytime by signing again. No separate backup needed.
+</Callout>
+
+## Comparison
+
+| Feature | Standard | Private |
+|---------|----------|---------|
+| On-chain ownership | Visible | Hidden (commitment) |
+| Setup | Sign transaction | Sign message + ZK proof |
+| Creation fee | Rent only | 0.01 SOL (via relayer) |
+| Closing | Owner signs | ZK proof required |
+| Management ops | Direct signing | ZK proofs |
+| Recovery | Wallet access | Wallet access (re-sign) |
+
+## When to Use Each
+
+**Choose Standard Mode when:**
+- Building internal tools
+- Testing and development
+- Privacy isn't a concern
+- You want simpler operations
+
+**Choose Private Mode when:**
+- Running anonymous AI agents
+- Sensitive financial operations
+- You don't want wallet-agent linkage visible
+- Privacy is a priority
+
+<CardGrid>
+  <Card title="Private Agents" href="/docs/privacy/private-agents">
+    Create and manage private agents
+  </Card>
+  <Card title="Privacy Cash" href="/docs/privacy/privacy-cash">
+    Fund agents anonymously
+  </Card>
+</CardGrid>

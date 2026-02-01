@@ -1,0 +1,103 @@
+---
+title: "On-Chain Program"
+description: "Technical details of the Cloaked Solana program."
+order: 1
+---
+
+## Program Overview
+
+The Cloaked program is deployed on Solana devnet:
+
+```
+Program ID: 3yMjzAeXXc5FZRUrJ1YqP4YMPhPd5bBxHQ6npNSPCUwB
+ZK Verifier: G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F
+```
+
+## Account Structure
+
+### CloakedAgentState
+
+Stores constraint configuration, spending state, and ownership:
+
+```rust
+pub struct CloakedAgentState {
+    pub owner: Option<Pubkey>,      // Owner wallet (None for private mode)
+    pub owner_commitment: [u8; 32], // ZK commitment (zeros for standard mode)
+    pub delegate: Pubkey,           // Agent's signing key
+    pub max_per_tx: u64,            // Per-transaction limit (0 = unlimited)
+    pub daily_limit: u64,           // Daily limit (0 = unlimited)
+    pub total_limit: u64,           // Lifetime limit (0 = unlimited)
+    pub expires_at: i64,            // Expiration timestamp (0 = never)
+    pub frozen: bool,               // Emergency stop flag
+    pub total_spent: u64,           // Lifetime spending counter
+    pub daily_spent: u64,           // Current day spending
+    pub last_day: i64,              // Day tracker (unix_timestamp / 86400)
+    pub bump: u8,                   // PDA bump seed
+    pub created_at: i64,            // Creation timestamp
+}
+// Size: 171 bytes | Rent: ~0.00138 SOL
+```
+
+### Vault PDA
+
+Program-derived address holding the actual SOL:
+
+```
+Seeds: ["vault", cloaked_agent_state_pubkey]
+```
+
+The vault is a separate PDA derived from the agent state, ensuring funds are isolated per agent.
+
+## Instructions
+
+| Instruction | Who | Description |
+|-------------|-----|-------------|
+| `create_cloaked_agent` | Owner | Initialize new agent with constraints |
+| `create_cloaked_agent_private` | Anyone | Create with ZK commitment |
+| `deposit` | Anyone | Fund the vault |
+| `spend` | Delegate | Transfer from vault (checked) |
+| `freeze` / `unfreeze` | Owner | Pause/resume spending |
+| `update_constraints` | Owner | Modify limits |
+| `withdraw` | Owner | Transfer from vault (unchecked) |
+| `close_cloaked_agent` | Owner | Reclaim funds and close |
+| `*_private` variants | ZK proof | Private mode operations |
+
+## Security
+
+All constraint checks happen atomically in the `spend` instruction:
+
+```rust
+// 1. Frozen check
+require!(!agent_state.frozen, ErrorCode::AgentFrozen);
+
+// 2. Expiration check
+if agent_state.expires_at > 0 {
+    require!(clock.unix_timestamp < agent_state.expires_at, ErrorCode::AgentExpired);
+}
+
+// 3. Per-transaction check (0 = unlimited)
+if agent_state.max_per_tx > 0 {
+    require!(amount <= agent_state.max_per_tx, ErrorCode::ExceedsPerTxLimit);
+}
+
+// 4. Daily reset logic
+let current_day = clock.unix_timestamp / SECONDS_PER_DAY;
+if current_day > agent_state.last_day {
+    agent_state.daily_spent = 0;
+    agent_state.last_day = current_day;
+}
+
+// 5. Daily limit check (0 = unlimited)
+if agent_state.daily_limit > 0 {
+    require!(agent_state.daily_spent + amount <= agent_state.daily_limit, ErrorCode::ExceedsDailyLimit);
+}
+
+// 6. Total limit check (0 = unlimited)
+if agent_state.total_limit > 0 {
+    require!(agent_state.total_spent + amount <= agent_state.total_limit, ErrorCode::ExceedsTotalLimit);
+}
+```
+
+<Callout type="info">
+A constraint value of 0 means "unlimited" for that constraint type.
+</Callout>

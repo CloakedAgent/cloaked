@@ -1,0 +1,1347 @@
+{
+  "address": "3yMjzAeXXc5FZRUrJ1YqP4YMPhPd5bBxHQ6npNSPCUwB",
+  "metadata": {
+    "name": "cloaked",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Cloaked - Trustless spending accounts for AI agents on Solana"
+  },
+  "instructions": [
+    {
+      "name": "close_cloaked_agent",
+      "docs": [
+        "Close agent and return all funds to owner (standard mode)"
+      ],
+      "discriminator": [
+        2,
+        187,
+        201,
+        28,
+        97,
+        107,
+        223,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signing the transaction (verified in instruction)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_cloaked_agent_private",
+      "docs": [
+        "Close agent with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        228,
+        20,
+        18,
+        140,
+        171,
+        179,
+        63,
+        229
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Destination for remaining vault funds"
+          ],
+          "writable": true
+        },
+        {
+          "name": "fee_recipient",
+          "docs": [
+            "Fee recipient (relayer) - gets operation fee + account rent on close"
+          ],
+          "writable": true
+        },
+        {
+          "name": "zk_verifier",
+          "docs": [
+            "ZK Verifier program for proof validation"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "create_cloaked_agent",
+      "docs": [
+        "Create a new Cloaked Agent with constraints (standard mode)"
+      ],
+      "discriminator": [
+        117,
+        255,
+        98,
+        150,
+        198,
+        101,
+        4,
+        18
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "delegate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Vault PDA to hold funds"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner of the agent (human wallet)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "delegate",
+          "docs": [
+            "Delegate key (agent's public key)"
+          ]
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Pays for account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_per_tx",
+          "type": "u64"
+        },
+        {
+          "name": "daily_limit",
+          "type": "u64"
+        },
+        {
+          "name": "total_limit",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "create_cloaked_agent_private",
+      "docs": [
+        "Create a new Cloaked Agent in private mode (no wallet linked on-chain)"
+      ],
+      "discriminator": [
+        16,
+        61,
+        195,
+        124,
+        202,
+        121,
+        44,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "delegate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Vault PDA to hold funds"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "delegate",
+          "docs": [
+            "Delegate key (agent's public key)"
+          ]
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "Pays for account creation"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "owner_commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "max_per_tx",
+          "type": "u64"
+        },
+        {
+          "name": "daily_limit",
+          "type": "u64"
+        },
+        {
+          "name": "total_limit",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Deposit SOL to agent vault (anyone can call)"
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "docs": [
+            "Agent state (to derive vault PDA)"
+          ]
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Vault PDA to receive funds"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "depositor",
+          "docs": [
+            "Source of funds"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "freeze",
+      "docs": [
+        "Freeze agent (owner only, standard mode) - emergency stop"
+      ],
+      "discriminator": [
+        255,
+        91,
+        207,
+        84,
+        251,
+        194,
+        254,
+        63
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signing the transaction (verified in instruction)"
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "freeze_private",
+      "docs": [
+        "Freeze agent with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        12,
+        97,
+        232,
+        227,
+        67,
+        11,
+        216,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier",
+          "docs": [
+            "ZK Verifier program for proof validation"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "spend",
+      "docs": [
+        "Spend from vault to destination (delegate only, enforces constraints)",
+        "Fee payer fronts tx fee and is reimbursed from vault"
+      ],
+      "discriminator": [
+        242,
+        205,
+        255,
+        87,
+        101,
+        217,
+        245,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "delegate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "delegate",
+          "docs": [
+            "Must match cloaked_agent_state.delegate"
+          ],
+          "signer": true,
+          "relations": [
+            "cloaked_agent_state"
+          ]
+        },
+        {
+          "name": "fee_payer",
+          "docs": [
+            "Fee payer - fronts tx fee, gets reimbursed from vault"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Destination for funds"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unfreeze",
+      "docs": [
+        "Unfreeze agent (owner only, standard mode)"
+      ],
+      "discriminator": [
+        133,
+        160,
+        68,
+        253,
+        80,
+        232,
+        218,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signing the transaction (verified in instruction)"
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "unfreeze_private",
+      "docs": [
+        "Unfreeze agent with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        92,
+        107,
+        130,
+        96,
+        204,
+        220,
+        77,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier",
+          "docs": [
+            "ZK Verifier program for proof validation"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "update_constraints",
+      "docs": [
+        "Update agent constraints (owner only, standard mode)"
+      ],
+      "discriminator": [
+        211,
+        134,
+        135,
+        62,
+        4,
+        255,
+        24,
+        52
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signing the transaction (verified in instruction)"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_per_tx",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "daily_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "total_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_constraints_private",
+      "docs": [
+        "Update agent constraints with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        54,
+        63,
+        7,
+        215,
+        136,
+        239,
+        74,
+        204
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier",
+          "docs": [
+            "ZK Verifier program for proof validation"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "max_per_tx",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "daily_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "total_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Withdraw from vault to any destination (owner only, standard mode, no constraints)",
+        "Works even if agent is frozen or expired - owner has full control"
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signing the transaction (verified in instruction)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Destination for funds"
+          ],
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_private",
+      "docs": [
+        "Withdraw with ZK proof (private mode, bypasses constraints)"
+      ],
+      "discriminator": [
+        190,
+        147,
+        132,
+        10,
+        185,
+        24,
+        63,
+        213
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "destination",
+          "docs": [
+            "Destination for funds"
+          ],
+          "writable": true
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier",
+          "docs": [
+            "ZK Verifier program for proof validation"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "CloakedAgentState",
+      "discriminator": [
+        27,
+        31,
+        167,
+        250,
+        251,
+        17,
+        219,
+        189
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InsufficientBalance",
+      "msg": "Insufficient balance in agent"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidFee",
+      "msg": "Fee exceeds amount"
+    },
+    {
+      "code": 6002,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6003,
+      "name": "AgentFrozen",
+      "msg": "Agent is frozen"
+    },
+    {
+      "code": 6004,
+      "name": "AgentExpired",
+      "msg": "Agent has expired"
+    },
+    {
+      "code": 6005,
+      "name": "ExceedsPerTxLimit",
+      "msg": "Amount exceeds per-transaction limit"
+    },
+    {
+      "code": 6006,
+      "name": "ExceedsDailyLimit",
+      "msg": "Amount exceeds daily limit"
+    },
+    {
+      "code": 6007,
+      "name": "ExceedsTotalLimit",
+      "msg": "Amount exceeds total limit"
+    },
+    {
+      "code": 6008,
+      "name": "NotOwner",
+      "msg": "Unauthorized: not owner"
+    },
+    {
+      "code": 6009,
+      "name": "NotDelegate",
+      "msg": "Unauthorized: not delegate"
+    },
+    {
+      "code": 6010,
+      "name": "NameTooLong",
+      "msg": "Invalid name: too long"
+    },
+    {
+      "code": 6011,
+      "name": "IsPrivateMode",
+      "msg": "Agent is in private mode - use ZK proof instructions"
+    },
+    {
+      "code": 6012,
+      "name": "NotPrivateMode",
+      "msg": "Agent is not in private mode"
+    },
+    {
+      "code": 6013,
+      "name": "CommitmentMismatch",
+      "msg": "Commitment mismatch in ZK proof"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidProof",
+      "msg": "Invalid ZK proof"
+    },
+    {
+      "code": 6015,
+      "name": "ProofVerificationFailed",
+      "msg": "ZK proof verification failed"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidVerifierProgram",
+      "msg": "Invalid ZK verifier program"
+    },
+    {
+      "code": 6017,
+      "name": "InsufficientBalanceForFee",
+      "msg": "Insufficient balance for operation fee"
+    }
+  ],
+  "types": [
+    {
+      "name": "CloakedAgentState",
+      "docs": [
+        "Cloaked Agent state - stores constraints and spending tracking",
+        "",
+        "Supports two ownership modes:",
+        "- Standard mode: owner = Some(wallet), owner_commitment = [0; 32]",
+        "- Private mode: owner = None, owner_commitment = hash(secret)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "Human wallet - full control over agent (None for private mode)"
+            ],
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "owner_commitment",
+            "docs": [
+              "Commitment hash for private mode ownership (zeros for standard mode)",
+              "In private mode: commitment = poseidon(agent_secret)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "delegate",
+            "docs": [
+              "Agent key - can spend within limits"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "max_per_tx",
+            "docs": [
+              "Max lamports per transaction (0 = unlimited)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "daily_limit",
+            "docs": [
+              "Max lamports per day (0 = unlimited)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_limit",
+            "docs": [
+              "Max lifetime lamports (0 = unlimited)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "docs": [
+              "Unix timestamp expiration (0 = never)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "frozen",
+            "docs": [
+              "Emergency stop"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "total_spent",
+            "docs": [
+              "Lifetime spending"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "daily_spent",
+            "docs": [
+              "Today's spending"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_day",
+            "docs": [
+              "Day tracker for reset (unix_timestamp / 86400)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Creation timestamp"
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}

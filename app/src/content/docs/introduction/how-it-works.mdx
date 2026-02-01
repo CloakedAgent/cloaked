@@ -1,0 +1,108 @@
+---
+title: "How It Works"
+description: "Technical overview of Cloaked's architecture and how constraints are enforced on-chain."
+order: 3
+---
+
+## Architecture Overview
+
+Cloaked consists of three main components:
+
+1. **On-Chain Program** - Solana smart contract that enforces constraints
+2. **SDK** - TypeScript library for creating and managing agents
+3. **MCP Server** - Integration layer for AI assistants
+
+```
++-------------+     +-------------+     +-------------+
+|   Client    |---->|    SDK      |---->|   Solana    |
+|   (AI/App)  |     |             |     |   Program   |
++-------------+     +-------------+     +-------------+
+       |                                       |
+       +---------------------------------------+
+              Transactions & Verification
+```
+
+## The Constraint System
+
+When you create a Cloaked Agent, the following accounts are created on Solana:
+
+### Vault Account (PDA)
+
+Holds the actual SOL. Derived in two steps:
+
+```
+agent_state = findProgramAddress(["cloaked_agent_state", delegate_pubkey], PROGRAM_ID)
+vault_pda = findProgramAddress(["vault", agent_state_pubkey], PROGRAM_ID)
+```
+
+### CloakedAgentState Account
+
+Stores the constraint configuration and spending state:
+
+- Owner (public key or ZK commitment for private agents)
+- Delegate (the agent's public key)
+- Constraints (maxPerTx, dailyLimit, totalLimit, expiresAt)
+- Spending counters (totalSpent, dailySpent)
+- Frozen status
+
+## Spend Flow
+
+<Steps>
+  <span>Agent initiates spend with destination and amount</span>
+  <span>Program checks: is agent frozen?</span>
+  <span>Program checks: current_time < expiration?</span>
+  <span>Program checks: amount ≤ per-tx limit?</span>
+  <span>Program resets daily counter if new day</span>
+  <span>Program checks: daily_spent + amount ≤ daily limit?</span>
+  <span>Program checks: total_spent + amount ≤ total limit?</span>
+  <span>If all pass, transfer SOL from vault to destination</span>
+  <span>Update spending counters</span>
+</Steps>
+
+<Callout type="info">
+All checks happen atomically in a single transaction. If any check fails, the entire transaction is rejected.
+</Callout>
+
+## Daily Limit Reset
+
+The daily limit resets at unix day boundaries (timestamp / 86400):
+
+```rust
+let current_day = clock.unix_timestamp / SECONDS_PER_DAY;
+
+if current_day > agent_state.last_day {
+    agent_state.daily_spent = 0;
+    agent_state.last_day = current_day;
+}
+```
+
+## Security Model
+
+### What the agent CAN do:
+- Spend SOL within defined limits
+- Check balance and status
+- View transaction history
+
+### What the agent CANNOT do:
+- Spend more than limits allow
+- Modify constraints after creation
+- Access funds after expiration
+- Transfer ownership
+
+### What the owner CAN do:
+- Freeze/unfreeze the agent (pause/resume spending)
+- Update constraints (change limits, expiration)
+- Withdraw funds (even if frozen or expired)
+- Close the agent (reclaim all funds)
+- Deposit more SOL to the vault
+
+## Next Steps
+
+<CardGrid>
+  <Card title="Constraint Details" href="/docs/architecture/constraints">
+    Deep dive into constraint configuration
+  </Card>
+  <Card title="SDK Installation" href="/docs/sdk/installation">
+    Start building with the SDK
+  </Card>
+</CardGrid>

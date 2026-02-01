@@ -1,0 +1,127 @@
+---
+title: "Why Cloaked?"
+description: "The problem Cloaked solves and why trustless spending accounts matter for AI agents."
+order: 2
+---
+
+## The Problem
+
+AI agents are becoming increasingly capable of autonomous action. They can browse the web, write code, and make decisions. But there's one area where they're stuck: **spending money**.
+
+Today, if you want an AI to make purchases or payments, you have two bad options:
+
+**1) Give full access** - Hand over your wallet keys. Fast but dangerous. One exploit = wallet drained.
+
+**2) Manual approval** - Approve every transaction. Safe but defeats automation. AI can't act independently.
+
+### Why Software Limits Don't Work
+
+You might think: "I'll just program my AI to spend max $10 per transaction."
+
+The problem? **The AI enforces its own rules.** When things go wrong:
+
+- **Jailbroken agent** → ignores its programmed limits
+- **Prompt injection** → attacker tells it to "ignore spending rules"
+- **Bug in code** → infinite loop bypasses checks
+- **Compromised system** → malware overrides the logic
+
+The agent has your keys. It *can* drain your wallet - the "limits" are just suggestions it's choosing to follow.
+
+## The Solution
+
+**On-chain enforced limits that agents literally cannot bypass.**
+
+```
++--------------------------------------------------+
+|                                                  |
+|  Your Wallet                                     |
+|       |                                          |
+|       |  Fund                                    |
+|       v                                          |
+|  +------------------------------------------+    |
+|  |  Cloaked Agent                           |    |
+|  |  |-- Total Limit: 1 SOL                  |    |
+|  |  |-- Per-TX Limit: 0.1 SOL               |    |
+|  |  |-- Daily Limit: 0.5 SOL                |    |
+|  |  +-- Expires: 7 days                     |    |
+|  |             |                            |    |
+|  |             v                            |    |
+|  |      AI Agent Spends                     |    |
+|  |      (within limits)                     |    |
+|  +------------------------------------------+    |
+|                                                  |
++--------------------------------------------------+
+```
+
+The AI gets a **limited key**, not your wallet. Constraints are enforced by the Solana program - not by the agent's code.
+
+**Jailbroken? Doesn't matter.** The blockchain rejects any transaction that exceeds limits. The agent can try to spend more - it will fail.
+
+## Software Limits vs On-Chain Limits
+
+<Callout type="info" title="Trustless = Verifiable">
+"Trustless" doesn't mean "no trust" - it means you don't have to trust anyone's promises. The blockchain enforces the rules, and anyone can verify.
+</Callout>
+
+| | Software Limits | On-Chain Limits |
+|---|---|---|
+| **Who enforces?** | The agent itself | Solana program |
+| **Can agent bypass?** | Yes - it has the keys | No - physically impossible |
+| **Jailbreak risk** | Total loss | Limited to constraints |
+| **Verifiable** | No - trust the code | Yes - inspect on-chain |
+| **Immutable** | Can be changed | Fixed at creation |
+
+## Use Cases
+
+### x402 Payments
+
+AI agents paying for APIs and services:
+
+- Pay-per-use AI services (inference, embeddings)
+- Premium data access and research tools
+- Compute and storage on demand
+
+### Autonomous Agents
+
+Long-running agents that need spending over time:
+
+- Research agents gathering paid data
+- Trading bots with strict risk limits
+- Monitoring services that pay for alerts
+
+### Multi-Agent Systems
+
+Give each agent its own constrained budget:
+
+- Separate limits per agent role
+- Track spending by agent
+- Revoke individual agents without affecting others
+
+### Continuous Operations
+
+Agents running 24/7 without human oversight:
+
+- Auto-expire access after a period
+- Daily limits prevent runaway spending
+- Instant freeze if something looks wrong
+
+## Comparison
+
+| Feature | Full Wallet Access | Manual Approval | Cloaked |
+|---------|-------------------|-----------------|---------|
+| AI Autonomy | ✅ Full | ❌ None | ✅ Within limits |
+| Security | ❌ Total exposure | ✅ Safe | ✅ Capped risk |
+| Scalability | ✅ Unlimited | ❌ Bottleneck | ✅ Unlimited |
+| On-chain enforced | ❌ No | N/A | ✅ Yes |
+| Instant freeze | ❌ Change keys | ✅ Stop approving | ✅ One click |
+
+## Next Steps
+
+<CardGrid>
+  <Card title="How It Works" href="/docs/introduction/how-it-works">
+    Technical deep-dive into the protocol
+  </Card>
+  <Card title="Quick Start" href="/docs/quickstart">
+    Create your first agent in 5 minutes
+  </Card>
+</CardGrid>

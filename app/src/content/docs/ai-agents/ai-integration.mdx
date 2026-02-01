@@ -1,0 +1,90 @@
+---
+title: "AI Integration"
+description: "Best practices for integrating Cloaked with AI agents."
+order: 4
+---
+
+## Prompt Engineering
+
+Help your AI understand spending limits and make informed decisions:
+
+```
+You have access to a Cloaked spending account.
+
+Before making any payment:
+1. Check balance with cloak_balance
+2. Verify the amount is within per-transaction limit
+3. Check daily_remaining to avoid hitting daily limit
+
+Current constraints (check cloak_status for updates):
+- Per-transaction limit: Check max_per_tx
+- Daily limit: Resets at midnight UTC
+- Total limit: Lifetime spending cap
+
+Always confirm with the user before making payments over 0.1 SOL.
+```
+
+## Available Prompts
+
+The MCP server includes pre-built prompts for common operations:
+
+| Prompt | Description |
+|--------|-------------|
+| `check_balance` | Check current balance and limits |
+| `spending_report` | Get detailed spending report with health |
+| `pay_for_service` | Pay for a service with confirmation |
+| `can_i_afford` | Check if a specific amount is within limits |
+| `fetch_paid_content` | Fetch x402-protected content |
+
+## Error Handling
+
+AI agents should gracefully handle these scenarios:
+
+| Error | Response |
+|-------|----------|
+| Insufficient balance | "Not enough funds. Current balance: X SOL" |
+| Exceeds per-tx limit | "Amount exceeds per-transaction limit of X SOL" |
+| Exceeds daily limit | "Daily limit reached. Resets at midnight UTC" |
+| Agent frozen | "Spending is currently paused by the owner" |
+| Agent expired | "This agent has expired and cannot spend" |
+
+## Security Best Practices
+
+<Steps>
+  <span>**Use minimal limits** - Set constraints appropriate for the task</span>
+  <span>**Set expiration dates** - Don't leave agents active indefinitely</span>
+  <span>**Monitor spending** - Check `cloak_status` regularly for health</span>
+  <span>**Create task-specific agents** - Narrow limits per use case</span>
+</Steps>
+
+<Callout type="tip">
+Create separate agents for different tasks rather than one agent with high limits. An agent for "book travel" should have different limits than "tip content creators".
+</Callout>
+
+## x402 Payments
+
+Use `cloak_x402_fetch` for pay-per-use APIs. The tool handles the full payment flow automatically.
+
+See the [x402 Protocol](/docs/ai-agents/x402) page for details on how it works and how to build x402-enabled services.
+
+## Rate Limiting
+
+Cloaked agents have built-in constraints, but you should also consider:
+
+- **Transaction frequency** - Space out requests to avoid spam
+- **Confirmation for large amounts** - Always ask before big payments
+- **Batch operations** - Combine multiple small payments when possible
+
+## Example: Claude with Cloaked
+
+```
+User: "Pay 0.05 SOL to HN7cAB... for the API subscription"
+
+Claude:
+1. Calls cloak_balance to check funds
+2. Verifies 0.05 SOL is within limits
+3. Confirms with user: "I'll send 0.05 SOL to HN7cAB... Proceed?"
+4. User confirms
+5. Calls cloak_pay with destination and amount
+6. Reports: "Sent 0.05 SOL. Transaction: 5xK... Remaining balance: 0.45 SOL"
+```

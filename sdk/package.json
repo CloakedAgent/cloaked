@@ -1,0 +1,74 @@
+{
+  "name": "@cloakedagent/sdk",
+  "version": "0.1.0",
+  "description": "Trustless spending accounts for AI agents on Solana",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "homepage": "https://cloakedagent.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CloakedAgent/cloaked"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "cloaked-mcp": "./dist/mcp/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:mcp": "tsc && chmod +x dist/mcp/index.js",
+    "mcp": "ts-node src/mcp/index.ts",
+    "test": "mocha --require ts-node/register 'tests/**/*.ts'",
+    "test:watch": "mocha --require ts-node/register --watch 'tests/**/*.ts'"
+  },
+  "keywords": [
+    "solana",
+    "ai-agents",
+    "mcp",
+    "claude",
+    "spending-limits",
+    "crypto-payments",
+    "x402",
+    "zk-proofs",
+    "model-context-protocol"
+  ],
+  "author": "Cloaked Agent",
+  "license": "MIT",
+  "dependencies": {
+    "@aztec/bb.js": "3.0.3",
+    "@coral-xyz/anchor": "^0.32.1",
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "@noir-lang/noir_js": "^1.0.0-beta.18",
+    "@solana/web3.js": "^1.98.0",
+    "bs58": "^5.0.0",
+    "circomlibjs": "^0.1.7",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.0.0",
+    "chai": "^4.5.0",
+    "mocha": "^10.8.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,315 @@
+---
+title: "Automation & Workflows"
+description: "Integrate Cloaked into OpenClaw, LangGraph, n8n, and autonomous agent workflows."
+order: 5
+---
+
+## Beyond Chat Interfaces
+
+The MCP server works great for Claude Desktop and Claude Code, but Cloaked's real power is **programmatic integration**. The SDK runs anywhere Node.js runs: automation platforms, serverless functions, custom agents, and always-on workflows.
+
+<Callout type="tip">
+Any system that can run JavaScript can use Cloaked. No chat interface required.
+</Callout>
+
+## Why Autonomous Agents Need Constraints
+
+Autonomous AI agents like OpenClaw and custom LangGraph agents are powerful but risky. They can execute code, make API calls, and spend crypto. The question is: how much do you trust them?
+
+<Callout type="warning" title="The Autonomy Problem">
+An AI agent with full wallet access can drain your funds if it hallucinates, gets prompt-injected, or makes a mistake. Cloaked solves this with on-chain limits that even a compromised agent cannot bypass.
+</Callout>
+
+**Without Cloaked:** Agent has your private key, can spend everything.
+
+**With Cloaked:** Agent has a constrained key, can only spend within your limits.
+
+## OpenClaw Integration
+
+[OpenClaw](https://openclaw.ai) is a popular open-source AI agent that can control your computer, manage files, and execute commands.
+
+**The security concern:** OpenClaw has high-level system privileges. If you give it wallet access for crypto payments, a prompt injection or misconfiguration could drain funds.
+
+**The solution:** Configure the Cloaked MCP server and give OpenClaw constrained spending power.
+
+### Step 1: Configure MCP in OpenClaw
+
+Add to your OpenClaw MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "cloaked": {
+      "command": "npx",
+      "args": ["cloaked-mcp"],
+      "env": {
+        "CLOAKED_AGENT_KEY": "your-agent-key-here",
+        "SOLANA_RPC_URL": "your-rpc-url-here"
+      }
+    }
+  }
+}
+```
+
+### Step 2: Create a Cloaked Payment Skill
+
+Create `skills/cloaked-pay/SKILL.md`:
+
+```markdown
+---
+name: cloaked-pay
+description: Pay SOL using the Cloaked spending account with on-chain constraints
+metadata: { "openclaw": { "emoji": "💸" } }
+---
+
+You have access to a Cloaked spending account via MCP tools.
+
+## Available Tools
+
+- `cloak_balance` - Check balance and remaining limits
+- `cloak_status` - Get detailed status with health indicator
+- `cloak_pay` - Send SOL to a destination address
+- `cloak_x402_fetch` - Fetch x402-protected content with auto-payment
+
+## Before Any Payment
+
+1. Call `cloak_balance` to check current funds and limits
+2. Verify the amount is within `daily_remaining` and per-transaction limits
+3. If `frozen` is true or `status` is not "active", do not attempt payment
+
+## Making Payments
+
+Use `cloak_pay` with:
+- `destination`: Solana wallet address (base58)
+- `amount`: Amount in SOL (e.g., 0.01)
+
+Report the transaction signature and remaining balance after payment.
+```
+
+## LangGraph Agents
+
+Build production-ready autonomous agents with [LangGraph 1.0](https://langchain.com/langgraph) and Cloaked spending.
+
+### Custom Tool Definition
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import { PublicKey } from "@solana/web3.js";
+
+const cloakedAgent = new CloakedAgent(
+  process.env.CLOAKED_AGENT_KEY!,
+  process.env.SOLANA_RPC_URL!
+);
+
+export const payTool = tool(
+  async ({ destination, amount, reason }) => {
+    const state = await cloakedAgent.getState();
+
+    if (state.status !== "active") {
+      return `Cannot pay: agent is ${state.status}`;
+    }
+
+    const amountLamports = Math.floor(amount * 1e9);
+
+    if (amountLamports > state.spending.dailyRemaining) {
+      return `Exceeds daily limit. Remaining: ${state.spending.dailyRemaining / 1e9} SOL`;
+    }
+
+    const result = await cloakedAgent.spend({
+      destination: new PublicKey(destination),
+      amount: amountLamports,
+    });
+
+    return `Paid ${amount} SOL for ${reason}. Tx: ${result.signature}`;
+  },
+  {
+    name: "cloaked_pay",
+    description: "Pay SOL using the constrained Cloaked account",
+    schema: z.object({
+      destination: z.string().describe("Solana wallet address (base58)"),
+      amount: z.number().describe("Amount in SOL"),
+      reason: z.string().describe("Why this payment is being made"),
+    }),
+  }
+);
+
+export const balanceTool = tool(
+  async () => {
+    const state = await cloakedAgent.getState();
+    return JSON.stringify({
+      balance: state.balance / 1e9,
+      dailyRemaining: state.spending.dailyRemaining / 1e9,
+      totalRemaining: state.spending.totalRemaining / 1e9,
+      status: state.status,
+    });
+  },
+  {
+    name: "cloaked_balance",
+    description: "Check Cloaked agent balance and remaining limits",
+    schema: z.object({}),
+  }
+);
+```
+
+### LangGraph Agent with Claude
+
+```typescript
+import { ChatAnthropic } from "@langchain/anthropic";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { payTool, balanceTool } from "./cloaked-tools";
+
+const model = new ChatAnthropic({
+  model: "claude-sonnet-4-20250514",
+  temperature: 0,
+});
+
+const agent = createReactAgent({
+  llm: model,
+  tools: [payTool, balanceTool],
+  messageModifier: `You are an autonomous agent with a Cloaked spending account on Solana.
+
+Your spending is constrained by on-chain limits you cannot exceed.
+Before payments, always check your balance with cloaked_balance.
+Log all payment reasons clearly for audit purposes.`,
+});
+
+const result = await agent.invoke({
+  messages: [{
+    role: "user",
+    content: "Pay 0.05 SOL to HN7cABqLq46Es1jh92dQQisijVPzvt1jrE8sGpmgJ6ZE for the API subscription"
+  }],
+});
+```
+
+<Callout type="info">
+Works with any LLM provider. Swap `ChatAnthropic` for `ChatOpenAI` (GPT-5, o3) or any other.
+</Callout>
+
+## n8n / Make.com Integration
+
+Workflow automation platforms can trigger Cloaked payments based on any event.
+
+### n8n Code Node
+
+```javascript
+// n8n JavaScript Code Node
+const { CloakedAgent } = require("@cloakedagent/sdk");
+const { PublicKey } = require("@solana/web3.js");
+
+const agent = new CloakedAgent(
+  $env.CLOAKED_AGENT_KEY,
+  $env.SOLANA_RPC_URL
+);
+
+const state = await agent.getState();
+
+if (state.balance > 0.01 * 1e9 && state.status === "active") {
+  const result = await agent.spend({
+    destination: new PublicKey($input.item.json.recipientAddress),
+    amount: $input.item.json.amountLamports,
+  });
+
+  return { signature: result.signature };
+}
+
+return { error: "Insufficient balance or agent inactive" };
+```
+
+### Workflow Ideas
+
+| Trigger | Action | Use Case |
+|---------|--------|----------|
+| Stripe payment received | Pay affiliate in SOL | Revenue sharing |
+| GitHub PR merged | Pay bounty to contributor | Open source rewards |
+| Cron (daily) | Renew API subscription | Automated renewals |
+| Webhook from AI service | Pay for compute used | Pay-per-inference |
+
+## Serverless Functions
+
+Deploy Cloaked-powered endpoints on Vercel, AWS Lambda, or Cloudflare Workers.
+
+### Vercel API Route
+
+```typescript
+// app/api/pay/route.ts
+import { CloakedAgent } from "@cloakedagent/sdk";
+import { PublicKey } from "@solana/web3.js";
+
+const agent = new CloakedAgent(
+  process.env.CLOAKED_AGENT_KEY!,
+  process.env.SOLANA_RPC_URL!
+);
+
+export async function POST(request: Request) {
+  const { destination, amountSol, reason } = await request.json();
+
+  try {
+    const result = await agent.spend({
+      destination: new PublicKey(destination),
+      amount: Math.floor(amountSol * 1e9),
+    });
+
+    return Response.json({
+      success: true,
+      signature: result.signature,
+      reason,
+    });
+  } catch (error: any) {
+    return Response.json(
+      { success: false, error: error.message },
+      { status: 400 }
+    );
+  }
+}
+```
+
+## Real-World Use Cases
+
+### Agentic Coding Assistants
+Claude Code, Cursor, or custom coding agents that pay for premium APIs, cloud compute, or specialized tooling. Agent spins up a GPU instance, pays per-minute, tears it down when done.
+
+### Bounty and Reward Systems
+GitHub bot that pays contributors when PRs merge. Each bounty is a separate Cloaked agent with total limit = bounty amount. When it's paid out, it's done. No overspend possible.
+
+### Autonomous Research
+Research agent purchases papers, datasets, and premium content as needed. Set a daily limit and let it work. No more manually approving each small purchase.
+
+### Multi-Agent Orchestration
+Swarm of specialized agents (researcher, writer, reviewer) each with their own budget. Coordinator assigns tasks, agents spend within their limits. No single agent can drain the whole budget.
+
+### Trading with Circuit Breakers
+Trading bot with hard limits baked into the chain. Per-tx limit caps position sizes. Daily limit caps exposure. Even if strategy logic fails, losses are bounded.
+
+These are just starting points. Any workflow that involves programmatic payments can benefit from on-chain constraints.
+
+## Security for Autonomous Agents
+
+<Callout type="warning" title="Autonomous = Higher Risk">
+When humans aren't reviewing each transaction, your on-chain constraints are your only protection. Set conservative limits.
+</Callout>
+
+| Agent Type | Recommended Approach |
+|------------|---------------------|
+| OpenClaw / personal assistant | Short expiration, low daily limit |
+| LangGraph production agent | Per-tx limit = max reasonable payment |
+| Scheduled automation | Daily limit = expected spend x 1.5 |
+| Experimental / dev agent | Minimal total limit, 24h expiration |
+
+### Defense in Depth
+
+1. **On-chain limits** - Enforced by Solana, cannot be bypassed
+2. **Application checks** - Validate before calling spend()
+3. **Monitoring** - Alert on unusual patterns via health status
+4. **Rotation** - Create new agents periodically, close old ones
+5. **Isolation** - Separate agents for separate tasks
+
+<CardGrid>
+  <Card title="SDK Reference" href="/docs/sdk/methods">
+    Full API for programmatic integration
+  </Card>
+  <Card title="Constraints" href="/docs/architecture/constraints">
+    Understanding spending limits
+  </Card>
+</CardGrid>

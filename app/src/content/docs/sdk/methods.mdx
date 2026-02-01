@@ -1,0 +1,303 @@
+---
+title: "Methods Reference"
+description: "Complete API reference for CloakedAgent methods."
+order: 3
+---
+
+## Balance & State
+
+These methods work in all modes.
+
+### `getBalance()`
+
+Get the vault's current SOL balance.
+
+```typescript
+const balance = await agent.getBalance();
+console.log(`Balance: ${balance} SOL`);
+```
+
+**Returns:** `number` - Balance in SOL
+
+### `getBalanceLamports()`
+
+Get the vault's balance in lamports.
+
+```typescript
+const lamports = await agent.getBalanceLamports();
+```
+
+**Returns:** `number` - Balance in lamports
+
+### `getState()`
+
+Get full agent state from on-chain.
+
+```typescript
+const state = await agent.getState();
+console.log({
+  balance: state.balance,
+  status: state.status,
+  dailyRemaining: state.spending.dailyRemaining,
+  frozen: state.constraints.frozen,
+});
+```
+
+**Returns:** `CloakedAgentState` - Complete agent state including constraints and spending
+
+---
+
+## Agent Mode (Spending)
+
+Requires agent key - only available when created via constructor or `generate()`.
+
+### `spend(options)`
+
+Transfer SOL from the vault to a destination.
+
+```typescript
+const result = await agent.spend({
+  destination: new PublicKey("HN7cAB..."),
+  amount: 50_000_000,  // 0.05 SOL in lamports
+});
+
+console.log(`Sent! Signature: ${result.signature}`);
+console.log(`Remaining: ${result.remainingBalance} lamports`);
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `destination` | `PublicKey` | Recipient address |
+| `amount` | `number` | Amount in lamports |
+| `feePayer` | `Signer` (optional) | Your wallet pays tx fee directly |
+
+**Returns:** `SpendResult`
+```typescript
+{
+  signature: string;
+  remainingBalance: number;  // lamports
+  dailyRemaining: number;    // lamports
+}
+```
+
+<Callout type="info" title="Fee Payment Options">
+- **Without feePayer**: Relayer pays tx fee, vault reimburses ~10k lamports
+- **With feePayer**: Your wallet pays ~5k lamports directly (no relayer)
+</Callout>
+
+---
+
+## Owner Mode (Management)
+
+Requires owner signature - available via `forOwner()` or after `create()`.
+
+### `deposit(depositor, amount)`
+
+Add SOL to the vault. Anyone can deposit.
+
+```typescript
+await agent.deposit(signer, 1_000_000_000); // 1 SOL
+```
+
+**Parameters:**
+- `depositor`: `Signer` - Who pays for the deposit
+- `amount`: `number` - Amount in lamports
+
+**Returns:** `string` - Transaction signature
+
+### `freeze(owner)`
+
+Emergency stop - pause all spending.
+
+```typescript
+await agent.freeze(ownerSigner);
+```
+
+**Returns:** `string` - Transaction signature
+
+### `unfreeze(owner)`
+
+Resume spending after a freeze.
+
+```typescript
+await agent.unfreeze(ownerSigner);
+```
+
+**Returns:** `string` - Transaction signature
+
+### `updateConstraints(owner, options)`
+
+Update agent constraints.
+
+```typescript
+await agent.updateConstraints(ownerSigner, {
+  maxPerTx: 200_000_000,  // Increase per-tx limit
+  dailyLimit: undefined,  // Keep current
+});
+```
+
+**Parameters:**
+- `owner`: `Signer` - Agent owner
+- `options`: `ConstraintOptions` - New values (undefined = no change)
+
+```typescript
+interface ConstraintOptions {
+  maxPerTx?: number;
+  dailyLimit?: number;
+  totalLimit?: number;
+  expiresAt?: Date | null;
+}
+```
+
+**Returns:** `string` - Transaction signature
+
+### `withdraw(owner, amount, destination)`
+
+Withdraw from vault to any address. Works even if frozen/expired.
+
+```typescript
+await agent.withdraw(
+  ownerSigner,
+  500_000_000,  // 0.5 SOL
+  new PublicKey("destination...")
+);
+```
+
+**Parameters:**
+- `owner`: `Signer` - Agent owner
+- `amount`: `number` - Amount in lamports
+- `destination`: `PublicKey` - Where to send funds
+
+**Returns:** `string` - Transaction signature
+
+<Callout type="tip">
+Withdraw bypasses all constraints - useful for emergency fund recovery.
+</Callout>
+
+### `close(owner)`
+
+Close the agent and reclaim all funds.
+
+```typescript
+await agent.close(ownerSigner);
+```
+
+**Returns:** `string` - Transaction signature
+
+<Callout type="warning">
+Closing is permanent. All remaining funds go to the owner.
+</Callout>
+
+---
+
+## Private Mode (ZK Operations)
+
+Requires private mode agent - available via `forPrivateOwner()` or `createPrivate*()`.
+
+All private operations use ZK proofs and go through the relayer.
+
+### `freezePrivate()`
+
+Freeze using ZK proof of ownership.
+
+```typescript
+await agent.freezePrivate();
+```
+
+**Returns:** `string` - Transaction signature
+
+### `unfreezePrivate()`
+
+Unfreeze using ZK proof.
+
+```typescript
+await agent.unfreezePrivate();
+```
+
+**Returns:** `string` - Transaction signature
+
+### `updateConstraintsPrivate(options)`
+
+Update constraints using ZK proof.
+
+```typescript
+await agent.updateConstraintsPrivate({
+  dailyLimit: 1_000_000_000,  // Increase to 1 SOL
+});
+```
+
+**Returns:** `string` - Transaction signature
+
+### `withdrawPrivate(amount, destination)`
+
+Withdraw using ZK proof.
+
+```typescript
+await agent.withdrawPrivate(
+  500_000_000,
+  new PublicKey("destination...")
+);
+```
+
+**Returns:** `string` - Transaction signature
+
+### `closePrivate(destination)`
+
+Close agent and send funds to destination using ZK proof.
+
+```typescript
+await agent.closePrivate(new PublicKey("destination..."));
+```
+
+**Returns:** `string` - Transaction signature
+
+<Callout type="info">
+Private operations require ZK prover initialization. The SDK handles this automatically on first use.
+</Callout>
+
+---
+
+## Cleanup
+
+### `destroy()`
+
+Securely clear sensitive data from memory.
+
+```typescript
+agent.destroy();
+```
+
+Call this when done using the agent to zero out:
+- Keypair secret key
+- Private mode secrets
+- Owner commitment
+
+---
+
+## Static Helpers
+
+### `derivePda(publicKey)`
+
+Derive the legacy PDA for any public key.
+
+```typescript
+const pda = CloakedAgent.derivePda(delegatePubkey);
+```
+
+### `deriveAgentStatePda(delegate)`
+
+Derive the CloakedAgentState PDA.
+
+```typescript
+const statePda = CloakedAgent.deriveAgentStatePda(delegatePubkey);
+```
+
+### `deriveVaultPda(agentStatePda)`
+
+Derive the vault PDA from agent state PDA.
+
+```typescript
+const vaultPda = CloakedAgent.deriveVaultPda(statePda);
+```

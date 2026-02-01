@@ -1,0 +1,328 @@
+---
+title: "x402 Protocol"
+description: "Pay-per-use APIs and machine-to-machine payments with HTTP 402."
+order: 3
+---
+
+## What is x402?
+
+[x402](https://x402.org/) is an open protocol built on HTTP 402 Payment Required - the status code reserved for "future use" since 1999. It enables **pay-per-use APIs** where payment happens automatically as part of the request flow.
+
+For AI agents, x402 means accessing premium services without subscriptions, API keys, or manual payment approval. Request, pay, receive - all in one flow.
+
+## Why x402 Matters for AI
+
+Traditional API access requires:
+1. Sign up for an account
+2. Enter payment details
+3. Get API key
+4. Manage subscription
+
+With x402:
+1. Request the resource
+2. Pay automatically (within your limits)
+3. Get the content
+
+No accounts. No subscriptions. No API keys to manage. Just pay-per-use.
+
+<Callout type="tip">
+x402 is ideal for AI agents that need to access many different services without pre-registration.
+</Callout>
+
+## How It Works
+
+```
+  AGENT                                           SERVER
+    │                                               │
+    │  1. GET /api/data                             │
+    │──────────────────────────────────────────────>│
+    │                                               │
+    │  2. 402 Payment Required                      │
+    │     X-PAYMENT-REQUIRED: {payTo, amount}       │
+    │<──────────────────────────────────────────────│
+    │                                               │
+    │  3. Pay on Solana                             │
+    │─────────────────────> [blockchain]              │
+    │                                               │
+    │  4. GET /api/data                             │
+    │     X-PAYMENT: {signature}                    │
+    │──────────────────────────────────────────────>│
+    │                                               │
+    │  5. 200 OK                                    │
+    │     {data: "..."}                             │
+    │<──────────────────────────────────────────────│
+    │                                               │
+```
+
+### The Flow
+
+1. **Agent requests resource** - normal HTTP request
+2. **Server returns 402** - with `X-PAYMENT-REQUIRED` header containing payment details (recipient, amount)
+3. **Agent pays** - Cloaked sends SOL to the specified address
+4. **Agent retries** - same request with `X-PAYMENT` header containing the transaction signature
+5. **Server verifies** - checks payment on-chain, returns content
+
+## The cloak_x402_fetch Tool
+
+The MCP server provides `cloak_x402_fetch` which handles the entire flow automatically.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | Yes | URL to fetch |
+| `method` | string | No | HTTP method (default: GET) |
+| `headers` | object | No | Custom request headers |
+| `body` | string | No | Request body for POST/PUT |
+| `agent_key` | string | No | Override the default agent key |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "type": "json",
+  "content": { "data": "premium content here" },
+  "contentType": "application/json",
+  "statusCode": 200,
+  "payment": {
+    "signature": "5xKj7...",
+    "amount_sol": 0.001,
+    "amount_lamports": 1000000,
+    "recipient": "HN7cAB..."
+  }
+}
+```
+
+The `payment` field is only present if a payment was made. If the resource was free (no 402), you get content without payment info.
+
+## Protocol Details
+
+### X-PAYMENT-REQUIRED Header
+
+When a server returns 402, it includes this header with base64-encoded JSON:
+
+```json
+{
+  "payTo": "HN7cABqLq46Es1jh92dQQisijVPzvt1jrE8sGpmgJ6ZE",
+  "amount": "1000000",
+  "currency": "SOL",
+  "network": "solana-mainnet"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `payTo` | Solana address to pay (base58) |
+| `amount` | Amount in lamports (string) |
+| `currency` | Always "SOL" for Solana |
+| `network` | "solana-mainnet" or "solana-devnet" |
+
+### X-PAYMENT Header
+
+After paying, the agent retries with this header containing base64-encoded JSON:
+
+```json
+{
+  "signature": "5xKj7nPzBA..."
+}
+```
+
+The server verifies this signature on-chain before returning content.
+
+## Test Endpoint
+
+We provide a test endpoint to verify your integration:
+
+```
+https://api.cloakedagent.com/api/x402-test/paid-content
+```
+
+**Cost:** 0.001 SOL (devnet)
+
+**Try it:**
+
+Ask Claude: *"Fetch the x402 test content from api.cloakedagent.com"*
+
+Or programmatically:
+
+```typescript
+// Via MCP tool
+const result = await cloak_x402_fetch({
+  url: "https://api.cloakedagent.com/api/x402-test/paid-content"
+});
+
+console.log(result.content);  // The protected content
+console.log(result.payment);  // Payment details
+```
+
+**Expected response:**
+
+```json
+{
+  "success": true,
+  "type": "json",
+  "content": {
+    "id": "default",
+    "title": "Protected Content",
+    "message": "You have successfully accessed protected content!",
+    "timestamp": "2026-01-30T...",
+    "paidWith": "5xK7..."
+  },
+  "statusCode": 200,
+  "payment": {
+    "signature": "5xK...",
+    "amount_sol": 0.001,
+    "amount_lamports": 1000000,
+    "recipient": "..."
+  }
+}
+```
+
+## Building x402-Enabled Services
+
+Want to accept x402 payments for your API? Here's the key pieces:
+
+### Payment Verification
+
+The critical part is verifying the payment actually landed on-chain with the correct amount:
+
+```typescript
+import { Connection } from "@solana/web3.js";
+
+interface PaymentRequirements {
+  payTo: string;
+  amount: string;
+  currency: string;
+  network: string;
+}
+
+async function verifyPayment(
+  connection: Connection,
+  signature: string,
+  requirements: PaymentRequirements
+): Promise<{ valid: boolean; error?: string }> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx || !tx.meta) {
+    return { valid: false, error: "Transaction not found" };
+  }
+
+  if (tx.meta.err) {
+    return { valid: false, error: "Transaction failed" };
+  }
+
+  // Find recipient and check balance change
+  const expectedAmount = parseInt(requirements.amount);
+  const accountKeys = tx.transaction.message.staticAccountKeys;
+
+  for (let i = 0; i < accountKeys.length; i++) {
+    if (accountKeys[i].toBase58() === requirements.payTo) {
+      const received = (tx.meta.postBalances[i] || 0) - (tx.meta.preBalances[i] || 0);
+
+      if (received >= expectedAmount) {
+        return { valid: true };
+      }
+      return { valid: false, error: `Insufficient: got ${received}, need ${expectedAmount}` };
+    }
+  }
+
+  return { valid: false, error: "Recipient not in transaction" };
+}
+```
+
+### Express Endpoint
+
+```typescript
+import express from "express";
+
+const PRICE_LAMPORTS = 1_000_000; // 0.001 SOL
+const RECIPIENT = "your-wallet-address";
+const usedSignatures = new Set<string>(); // Replay protection
+
+function encodeRequirements(payTo: string, amount: number): string {
+  return Buffer.from(JSON.stringify({
+    payTo, amount: amount.toString(), currency: "SOL", network: "solana-mainnet"
+  })).toString("base64");
+}
+
+app.get("/api/premium-data", async (req, res) => {
+  const paymentHeader = req.header("X-PAYMENT");
+
+  if (!paymentHeader) {
+    res.status(402);
+    res.setHeader("X-PAYMENT-REQUIRED", encodeRequirements(RECIPIENT, PRICE_LAMPORTS));
+    return res.json({ error: "Payment Required" });
+  }
+
+  const { signature } = JSON.parse(Buffer.from(paymentHeader, "base64").toString());
+
+  // Replay protection
+  if (usedSignatures.has(signature)) {
+    return res.status(403).json({ error: "Payment already used" });
+  }
+
+  const result = await verifyPayment(connection, signature, {
+    payTo: RECIPIENT,
+    amount: PRICE_LAMPORTS.toString(),
+    currency: "SOL",
+    network: "solana-mainnet"
+  });
+
+  if (!result.valid) {
+    res.status(402);
+    res.setHeader("X-PAYMENT-REQUIRED", encodeRequirements(RECIPIENT, PRICE_LAMPORTS));
+    return res.json({ error: result.error });
+  }
+
+  usedSignatures.add(signature);
+  res.json({ data: "Your premium content" });
+});
+```
+
+### Key Points
+
+1. **Verify balance change** - check pre/post balances, not just tx success
+2. **Replay protection** - track used signatures
+3. **Return 402** - with `X-PAYMENT-REQUIRED` header
+4. **Use confirmed commitment** - wait for confirmation before accepting
+
+## Use Cases
+
+### Premium Data APIs
+Weather, financial data, research databases. Pay per query instead of monthly subscription.
+
+### AI Compute Services
+Pay-per-inference for models. Spin up, use, pay, done.
+
+### Content Access
+Research papers, premium articles, datasets. Micropayments unlock access.
+
+### Agent-to-Agent Services
+One AI agent offering services to another. The x402 economy.
+
+## Constraints + x402
+
+Cloaked's constraints apply to x402 payments:
+
+- **Per-tx limit** - caps the maximum any single x402 request can cost
+- **Daily limit** - caps total x402 spending per day
+- **Total limit** - caps lifetime x402 spending
+
+If an x402 service costs more than your per-tx limit, the payment will fail and the request will return an error.
+
+<Callout type="tip">
+Set your per-tx limit based on the most expensive x402 service you expect to use.
+</Callout>
+
+<CardGrid>
+  <Card title="Available Tools" href="/docs/ai-agents/tools">
+    All MCP tools reference
+  </Card>
+  <Card title="Automation" href="/docs/ai-agents/automation">
+    Integrate with workflows
+  </Card>
+</CardGrid>

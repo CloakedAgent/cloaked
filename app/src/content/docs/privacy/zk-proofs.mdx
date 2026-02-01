@@ -1,0 +1,126 @@
+---
+title: "ZK Proofs"
+description: "How Cloaked uses ZK proofs to prove ownership without revealing identity."
+order: 2
+---
+
+## The Core Problem
+
+Private agents have no owner on-chain. Instead, they store a *commitment*: a cryptographic hash of a secret only you know. To prove you own an agent, you must demonstrate knowledge of that secret without revealing it.
+
+This is the essence of zero-knowledge: proving what you know without showing what you know.
+
+## Secret Derivation
+
+Ownership begins with a signature. When you sign a message with your wallet, that signature becomes the seed for all your private agents.
+
+```
+wallet.sign("Cloak Private Agent")
+           │
+           ▼
+    master_secret = sha256(signature)
+           │
+           ├── poseidon(master, 0) → agent_secret_0 → commitment_0
+           ├── poseidon(master, 1) → agent_secret_1 → commitment_1
+           └── poseidon(master, n) → agent_secret_n → commitment_n
+```
+
+The commitment stored on-chain is `poseidon(agent_secret)`. Poseidon is a ZK-friendly hash function designed for efficient circuit implementation. Given only the commitment, recovering the secret requires breaking the hash's preimage resistance.
+
+<Callout type="info">
+Same wallet, same signature, same secrets. You can recover your agents on any device by signing again.
+</Callout>
+
+## Client-Side Proving
+
+When you perform a private operation, your browser generates a zero-knowledge proof locally. The secret never leaves your device.
+
+The proof circuit is written in [Noir](https://noir-lang.org/), Aztec's domain-specific language for ZK:
+
+```noir
+use dep::poseidon::poseidon::bn254::hash_1;
+
+fn main(
+    agent_secret: Field,
+    commitment: pub Field
+) {
+    let computed_commitment = hash_1([agent_secret]);
+    assert(computed_commitment == commitment);
+}
+```
+
+The circuit is minimal by design. It proves exactly one thing: you know a value that hashes to the stored commitment.
+
+Proof generation uses [Barretenberg](https://github.com/AztecProtocol/barretenberg) (bb.js) compiled to WebAssembly:
+
+| Component | Detail |
+|-----------|--------|
+| Proving system | UltraHonk |
+| Curve | BN254 |
+| Proof size | ~14.6 KB |
+| Generation time | 250-400ms (browser) |
+
+## The Attestation Layer
+
+Solana cannot verify UltraHonk proofs directly. We use a hybrid approach: the backend verifies your proof and generates a Groth16 attestation that Solana can verify on-chain.
+
+```
+Browser                    Backend                     Solana
+   │                          │                           │
+   │  UltraHonk proof         │                           │
+   ├─────────────────────────►  │                           │
+   │  (secret stays here)     │  Verify proof             │
+   │                          │  Generate attestation     │
+   │                          │                           │
+   │                          │  Groth16 proof (324 bytes)│
+   │                          ├──────────────────────────►  │
+   │                          │                           │  Verify via CPI
+   │                          │                           │  Execute instruction
+```
+
+The attestation circuit binds a random nonce to your commitment, preventing replay attacks while keeping proof generation fast.
+
+<Callout type="info">
+The backend verifies your proof but never sees your secret. It attests that a valid proof was presented for a given commitment.
+</Callout>
+
+## On-Chain Verification
+
+The Solana program verifies attestations via CPI (Cross-Program Invocation) to a dedicated verifier program. Before executing any private operation, it confirms:
+
+1. The proof is cryptographically valid
+2. The commitment in the proof matches the agent's stored commitment
+3. The nonce prevents replay
+
+Only after verification does the instruction execute (freeze, unfreeze, withdraw, etc.).
+
+## Security Model
+
+The system is designed around a clear trust boundary:
+
+| Component | Trusts | Does Not Trust |
+|-----------|--------|----------------|
+| **Your browser** | Wallet, local storage | Backend, network |
+| **Backend** | Proof validity | Your identity |
+| **Solana** | Cryptographic verification | Backend honesty |
+
+The backend is trusted for *availability* (it must relay your transactions) but not for *security* (it cannot access your funds or impersonate you). Even a malicious backend cannot:
+
+- Spend from your agent (requires delegate key)
+- Prove ownership (requires your secret)
+- Link your wallet to your agent (never sees the connection)
+
+## Why This Architecture
+
+We initially pursued recursive verification: a circuit that verifies UltraHonk proofs inside Groth16, eliminating backend trust entirely. The recursive verifier circuit compiled successfully but exceeded practical proving constraints.
+
+The hybrid approach achieves the core security property (secret never transmitted) while remaining practical. The backend becomes a relay, not a trusted party. Your secret exists only in your browser, proven but never revealed.
+
+<CardGrid>
+  <Card title="Private Agents" href="/docs/privacy/private-agents">
+    Create and manage private agents
+  </Card>
+  <Card title="Architecture" href="/docs/architecture/on-chain">
+    On-chain program details
+  </Card>
+</CardGrid>

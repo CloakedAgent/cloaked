@@ -1,0 +1,91 @@
+---
+title: "Introduction to Cloaked"
+description: "Trustless spending accounts for AI agents on Solana. Give AI agents spending power without giving them your wallet keys."
+order: 1
+---
+
+## What is Cloaked?
+
+Cloaked is a protocol for creating **trustless spending accounts** for AI agents on Solana. It solves a fundamental problem: how do you give an AI agent the ability to spend money without trusting it completely?
+
+<Callout type="tip" title="The Problem">
+AI agents need to make transactions autonomously, but giving them full wallet access is dangerous. What if they malfunction? What if they get jailbroken or compromised?
+</Callout>
+
+With Cloaked, you can:
+
+- **Set spending limits** that are enforced on-chain
+- **Create constraints** (per-transaction, daily, total, expiration)
+- **Revoke access instantly** if something goes wrong
+- **Keep your keys safe** - agents never touch your main wallet
+
+## Key Concepts
+
+### Cloaked Agents
+
+A Cloaked Agent is a spending account with built-in constraints. It has its own keypair (the "agent key") that can only spend within the limits you define.
+
+```typescript
+const agent = new CloakedAgent(agentKey, rpcUrl);
+
+// Agent can spend up to its limits
+await agent.spend({
+  destination: new PublicKey("..."),
+  amount: 100_000_000  // 0.1 SOL in lamports
+});
+
+// But cannot exceed them - enforced on-chain!
+```
+
+### Constraints
+
+Constraints define what an agent can and cannot do:
+
+- **Total Limit**: Maximum SOL the agent can ever spend
+- **Per-Transaction Limit**: Maximum per single transaction
+- **Daily Limit**: Maximum per 24-hour period
+- **Expiration**: When the agent's access ends
+
+### Privacy Modes
+
+Cloaked supports two privacy modes:
+
+1. **Standard Mode**: Your wallet is publicly linked to the agent
+2. **Private Mode**: Zero-knowledge proofs hide the ownership link
+
+<CardGrid>
+  <Card title="Quick Start" href="/docs/quickstart">
+    Create your first Cloaked Agent in 5 minutes
+  </Card>
+  <Card title="SDK Reference" href="/docs/sdk/installation">
+    Full SDK documentation and API reference
+  </Card>
+</CardGrid>
+
+## How It Works
+
+<Steps>
+  <span>**Create a Cloaked Agent** - Define spending limits and constraints</span>
+  <span>**Fund the account** - Deposit SOL into the agent's vault</span>
+  <span>**Give the agent key to your AI** - It can now spend within limits</span>
+  <span>**Monitor and manage** - Track spending, adjust limits, or revoke access</span>
+</Steps>
+
+The magic is in the **on-chain enforcement**. Even if an AI agent tries to spend more than its limit, the Solana program will reject the transaction. There's no way to bypass the constraints.
+
+## x402 Support
+
+Cloaked natively supports the [x402 payment protocol](/docs/ai-agents/x402) - the emerging standard for machine-to-machine payments. AI agents can automatically pay for premium APIs, compute, and content with the `cloak_x402_fetch` tool.
+
+## Why Solana?
+
+Cloaked is built on Solana because:
+
+- **Low fees**: AI agents can make frequent small transactions economically
+- **Fast finality**: Transactions confirm in seconds
+- **Programmable**: Custom on-chain programs enforce constraints
+- **Growing AI ecosystem**: MCP servers, AI agents, and autonomous systems
+
+## Next Steps
+
+Ready to get started? Head to the [Quick Start](/docs/quickstart) guide to create your first Cloaked Agent.

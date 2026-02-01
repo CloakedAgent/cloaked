@@ -1,0 +1,157 @@
+---
+title: "Available Tools"
+description: "MCP tools provided by the Cloaked server."
+order: 2
+---
+
+## cloak_balance
+
+Get the agent's current balance and spending limits.
+
+**Parameters:**
+- `agent_key` (optional): Override the default agent key
+
+**Response:**
+```json
+{
+  "balance_sol": 0.5,
+  "balance_lamports": 500000000,
+  "daily_spent": 100000000,
+  "daily_limit": 500000000,
+  "daily_remaining": 400000000,
+  "total_spent": 200000000,
+  "total_limit": 1000000000,
+  "total_remaining": 800000000,
+  "expires_in_days": 7,
+  "frozen": false,
+  "status": "active"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `balance_sol` | Current balance in SOL |
+| `balance_lamports` | Current balance in lamports |
+| `daily_remaining` | How much can still be spent today |
+| `total_remaining` | How much can still be spent lifetime |
+| `expires_in_days` | Days until agent expires (null if never) |
+| `status` | `"active"`, `"frozen"`, or `"expired"` |
+
+---
+
+## cloak_status
+
+Get detailed agent status with health indicator.
+
+**Parameters:**
+- `agent_key` (optional): Override the default agent key
+
+**Response:**
+```json
+{
+  "constraints": {
+    "max_per_tx": 100000000,
+    "daily_limit": 500000000,
+    "total_limit": 1000000000,
+    "expires_at": "2025-02-15T00:00:00.000Z"
+  },
+  "spending": {
+    "balance_sol": 0.5,
+    "daily_spent": 100000000,
+    "total_spent": 200000000
+  },
+  "health": "ok"
+}
+```
+
+**Health Values:**
+
+| Value | Meaning |
+|-------|---------|
+| `ok` | Agent is healthy and ready |
+| `low_balance` | Balance below 0.01 SOL |
+| `near_daily_limit` | Less than 10% of daily limit remaining |
+| `near_total_limit` | Less than 10% of total limit remaining |
+| `frozen` | Agent is frozen by owner |
+| `expired` | Agent has expired |
+
+<Callout type="tip">
+Use health status to proactively warn users before hitting limits.
+</Callout>
+
+---
+
+## cloak_pay
+
+Send SOL to a destination address.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `destination` | string | Yes | Recipient's Solana address (base58) |
+| `amount` | number | Yes | Amount in SOL (e.g., 0.1 for 100 milliSOL) |
+| `agent_key` | string | No | Override the default agent key |
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "signature": "5xK...",
+  "remaining_balance": 0.45,
+  "daily_remaining": 0.35
+}
+```
+
+**Response (failure):**
+```json
+{
+  "success": false,
+  "signature": "",
+  "remaining_balance": 0,
+  "daily_remaining": 0,
+  "error": "Exceeds daily limit"
+}
+```
+
+---
+
+## cloak_x402_fetch
+
+Fetch x402-protected content with automatic payment. Handles the full x402 protocol flow: request, detect 402, pay, retry with proof.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | Yes | URL to fetch |
+| `method` | string | No | HTTP method (default: GET) |
+| `headers` | object | No | Custom request headers |
+| `body` | string | No | Request body for POST/PUT |
+| `agent_key` | string | No | Override the default agent key |
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "type": "json",
+  "content": { "data": "..." },
+  "contentType": "application/json",
+  "statusCode": 200,
+  "payment": {
+    "signature": "5xK...",
+    "amount_sol": 0.001,
+    "amount_lamports": 1000000,
+    "recipient": "HN7cAB..."
+  }
+}
+```
+
+**Content Types:**
+- `json` - Parsed JSON object
+- `text` - Plain text string
+- `binary` - Base64 encoded data
+
+<Callout type="info">
+See the [x402 Protocol](/docs/ai-agents/x402) page for full protocol details, test endpoint, and how to build x402-enabled services.
+</Callout>

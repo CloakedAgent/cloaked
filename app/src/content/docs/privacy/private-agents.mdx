@@ -1,0 +1,155 @@
+---
+title: "Private Agents"
+description: "Creating and managing privacy-preserving Cloaked Agents."
+order: 3
+---
+
+## Overview
+
+Private agents use zero-knowledge proofs to hide the link between your wallet and the agent. On-chain, the agent is owned by a commitment hash, not your public key.
+
+**Using the Dashboard:** Connect your wallet, click "Create Agent", and select "Private Mode". The app handles proof generation automatically.
+
+**Using the SDK:** Full programmatic control, covered below.
+
+## Creating a Private Agent
+
+### Option 1: Direct Creation (Payer Visible)
+
+Your wallet pays for creation but isn't linked as owner:
+
+```typescript
+import { CloakedAgent, deriveMasterSecret } from "@cloakedagent/sdk";
+
+// 1. Derive master secret from wallet signature
+const masterSecret = await deriveMasterSecret(wallet.signMessage);
+
+// 2. Create private agent
+const { agent, agentKey, signature: txSig } = await CloakedAgent.createPrivate(
+  connection,
+  payer,        // Pays for creation (visible on-chain)
+  masterSecret,
+  0,            // nonce - first agent
+  {
+    maxPerTx: 100_000_000,
+    dailyLimit: 500_000_000,
+    totalLimit: 1_000_000_000,
+  }
+);
+```
+
+<Callout type="info">
+The payer is visible on-chain, but there's no ownership link. The payer could be anyone.
+</Callout>
+
+### Option 2: Via Relayer (Maximum Privacy)
+
+Your wallet never appears in any on-chain transaction:
+
+```typescript
+// 1. First, deposit to Privacy Cash to get funds to the relayer
+// (see Privacy Cash docs)
+
+// 2. Create via relayer
+const { agent, agentKey, vaultPda } = await CloakedAgent.createPrivateViaRelayer(
+  masterSecret,
+  0,  // nonce
+  {
+    maxPerTx: 100_000_000,
+    dailyLimit: 500_000_000,
+    totalLimit: 1_000_000_000,
+  },
+  depositSignature,  // From Privacy Cash
+  depositAmount,     // Total including 0.01 SOL fee
+  rpcUrl
+);
+```
+
+**Benefits:**
+- Your wallet never signs any on-chain transaction
+- Funds come through Privacy Cash mixer
+- No linkage between you and the agent
+
+## Managing Private Agents
+
+Load an existing private agent:
+
+```typescript
+const agent = await CloakedAgent.forPrivateOwner(masterSecret, nonce, rpcUrl);
+```
+
+All management operations use ZK proofs:
+
+```typescript
+// Freeze
+await agent.freezePrivate();
+
+// Unfreeze
+await agent.unfreezePrivate();
+
+// Update constraints
+await agent.updateConstraintsPrivate({
+  dailyLimit: 1_000_000_000,
+});
+
+// Withdraw
+await agent.withdrawPrivate(
+  500_000_000,
+  new PublicKey("destination...")
+);
+
+// Close and reclaim funds
+await agent.closePrivate(new PublicKey("destination..."));
+```
+
+<Callout type="info" title="Your Wallet = Your Key">
+The master secret is deterministically derived from your wallet signature. Same wallet always produces the same master secret. You can re-derive it anytime by signing again, no separate backup needed.
+</Callout>
+
+## How ZK Proofs Work
+
+When you call a private operation:
+
+<Steps>
+  <span>SDK derives your agent secret from master secret + nonce</span>
+  <span>Browser generates a ZK proof: "I know the preimage of this commitment"</span>
+  <span>Proof is sent to the backend (your secret stays local)</span>
+  <span>Backend verifies and relays to Solana</span>
+  <span>On-chain program verifies proof before executing</span>
+</Steps>
+
+The proof reveals nothing about your wallet or secret. It only proves that you know it.
+
+<Card title="ZK Proofs" href="/docs/privacy/zk-proofs">
+  Deep dive into our ZK architecture, Noir circuits, and the attestation system
+</Card>
+
+## Multiple Private Agents
+
+Create multiple agents from the same master secret using different nonces:
+
+```typescript
+// First agent (nonce 0)
+const agent0 = await CloakedAgent.createPrivateViaRelayer(masterSecret, 0, ...);
+
+// Second agent (nonce 1)
+const agent1 = await CloakedAgent.createPrivateViaRelayer(masterSecret, 1, ...);
+
+// Discover all your agents
+import { discoverPrivateAgents } from "@cloakedagent/sdk";
+const agents = await discoverPrivateAgents(masterSecret, connection);
+```
+
+## Limitations
+
+- **Cannot transfer ownership**: Commitment is fixed at creation
+- **Wallet access required**: You need the same wallet to re-derive the master secret
+- **Slightly higher fees**: ZK proof verification costs
+- **Relayer dependency**: Private operations go through the relayer
+
+## Security Considerations
+
+1. **Wallet access = full access**: Anyone with your wallet can derive the master secret
+2. **Nonce tracking**: Keep track of which nonces you've used
+3. **Client-side proofs**: Proof generation happens in your browser. Secrets never leave your device.
+4. **Relayer trust**: The relayer verifies proofs but cannot extract your secret from them

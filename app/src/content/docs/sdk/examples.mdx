@@ -1,0 +1,179 @@
+---
+title: "Examples"
+description: "Real-world examples of using the Cloaked SDK."
+order: 4
+---
+
+## AI Assistant Integration
+
+Give an AI agent spending power via environment variables:
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+
+// Load agent from environment
+const agent = new CloakedAgent(process.env.CLOAKED_AGENT_KEY!, rpcUrl);
+
+// AI can now use this agent to make payments
+async function handlePaymentRequest(destination: string, amount: number) {
+  const state = await agent.getState();
+
+  // Check constraints before attempting
+  if (state.status === "frozen") {
+    return { error: "Agent is frozen" };
+  }
+
+  if (state.balance < amount) {
+    return { error: "Insufficient balance" };
+  }
+
+  try {
+    const result = await agent.spend({
+      destination: new PublicKey(destination),
+      amount,
+    });
+    return { success: true, signature: result.signature };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+```
+
+## Dashboard Pattern (Owner Mode)
+
+Manage agents without exposing the agent key:
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+function AgentDashboard({ delegatePubkey }: { delegatePubkey: string }) {
+  const { publicKey, signTransaction } = useWallet();
+  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL!;
+
+  // Owner mode - can manage but NOT spend
+  const agent = CloakedAgent.forOwner(delegatePubkey, rpcUrl);
+
+  async function handleFreeze() {
+    const signer = { publicKey, signTransaction };
+    await agent.freeze(signer);
+  }
+
+  async function handleWithdraw(amount: number) {
+    const signer = { publicKey, signTransaction };
+    await agent.withdraw(signer, amount, publicKey);
+  }
+
+  // ...
+}
+```
+
+## Automated Daily Payments
+
+Schedule recurring payments within limits:
+
+```typescript
+async function dailyPayment(agent: CloakedAgent) {
+  const state = await agent.getState();
+  const paymentAmount = 10_000_000; // 0.01 SOL
+
+  // Check if we have daily limit remaining
+  if (state.spending.dailyRemaining < paymentAmount) {
+    console.log("Daily limit reached, waiting for reset");
+    return;
+  }
+
+  if (state.balance < paymentAmount) {
+    console.log("Insufficient balance");
+    return;
+  }
+
+  await agent.spend({
+    destination: PAYMENT_RECIPIENT,
+    amount: paymentAmount,
+  });
+
+  console.log("Daily payment sent");
+}
+```
+
+## Creating a Private Agent
+
+Maximum privacy - wallet never linked on-chain:
+
+```typescript
+import { CloakedAgent, deriveMasterSecret } from "@cloakedagent/sdk";
+
+async function createPrivateAgent(wallet: WalletAdapter) {
+  // 1. Derive master secret from wallet signature
+  const masterSecret = await deriveMasterSecret(wallet.signMessage);
+
+  // 2. Create agent via relayer (most private)
+  // User must first deposit to Privacy Cash to get depositSignature
+  const { agent, agentKey, vaultPda } = await CloakedAgent.createPrivateViaRelayer(
+    masterSecret,
+    0, // nonce - first agent
+    {
+      maxPerTx: 100_000_000,
+      dailyLimit: 500_000_000,
+      totalLimit: 1_000_000_000,
+    },
+    depositSignature,
+    depositAmount,
+    rpcUrl
+  );
+
+  // 3. Save agentKey securely - this is needed for spending
+  return { agentKey, vaultPda };
+}
+```
+
+## Error Handling
+
+Handle common constraint errors:
+
+```typescript
+try {
+  await agent.spend({ destination, amount });
+} catch (error) {
+  const msg = error.message;
+
+  if (msg.includes("exceeds per-transaction limit")) {
+    console.log("Amount too large for single transaction");
+  } else if (msg.includes("exceeds daily limit")) {
+    console.log("Daily limit reached - resets at next unix day boundary");
+  } else if (msg.includes("exceeds total limit")) {
+    console.log("Lifetime limit reached - agent cannot spend more");
+  } else if (msg.includes("frozen")) {
+    console.log("Agent has been frozen by owner");
+  } else if (msg.includes("expired")) {
+    console.log("Agent has expired");
+  } else {
+    throw error;
+  }
+}
+```
+
+## Bring Your Own Fee Payer
+
+Skip the relayer and pay transaction fees directly:
+
+```typescript
+import { Keypair } from "@solana/web3.js";
+
+// Your wallet keypair
+const feePayer = Keypair.fromSecretKey(/* ... */);
+
+// Spend with direct fee payment (~5k lamports instead of 10k)
+await agent.spend({
+  destination,
+  amount,
+  feePayer,  // Your wallet pays the tx fee
+});
+```
+
+<Callout type="tip">
+Using your own fee payer removes relayer dependency and slightly reduces costs.
+</Callout>

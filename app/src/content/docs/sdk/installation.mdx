@@ -1,0 +1,86 @@
+---
+title: "Installation"
+description: "Install the Cloaked SDK in your project."
+order: 1
+---
+
+## Requirements
+
+- Node.js 20 or later
+- npm, yarn, or pnpm
+
+## Install
+
+<Tabs defaultValue="npm">
+  <TabsList>
+    <TabsTrigger value="npm">npm</TabsTrigger>
+    <TabsTrigger value="yarn">yarn</TabsTrigger>
+    <TabsTrigger value="pnpm">pnpm</TabsTrigger>
+  </TabsList>
+  <TabsContent value="npm">
+```bash
+npm install @cloakedagent/sdk
+```
+  </TabsContent>
+  <TabsContent value="yarn">
+```bash
+yarn add @cloakedagent/sdk
+```
+  </TabsContent>
+  <TabsContent value="pnpm">
+```bash
+pnpm add @cloakedagent/sdk
+```
+  </TabsContent>
+</Tabs>
+
+## Peer Dependencies
+
+The SDK requires Solana web3.js and Anchor:
+
+```bash
+npm install @solana/web3.js @coral-xyz/anchor
+```
+
+## Basic Setup
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+
+// Use your own RPC endpoint (we recommend Helius)
+const rpcUrl = process.env.SOLANA_RPC_URL!;
+
+// Load existing agent (agent mode - can spend)
+const agent = new CloakedAgent(agentKey, rpcUrl);
+
+// Or manage agent without the key (owner mode)
+const agent = CloakedAgent.forOwner(delegatePubkey, rpcUrl);
+```
+
+<Callout type="warning" title="RPC Endpoint Required">
+You must provide your own RPC endpoint. Public endpoints have strict rate limits. We recommend [Helius](https://www.helius.dev/) for reliable, high-performance access.
+</Callout>
+
+## TypeScript
+
+The SDK is written in TypeScript and includes full type definitions. No additional `@types` packages needed.
+
+## Constants
+
+```typescript
+import { CLOAKED_PROGRAM_ID, ZK_VERIFIER_PROGRAM_ID } from "@cloakedagent/sdk";
+
+// Program ID: 3yMjzAeXXc5FZRUrJ1YqP4YMPhPd5bBxHQ6npNSPCUwB
+// ZK Verifier: G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F
+```
+
+## Next Steps
+
+<CardGrid>
+  <Card title="CloakedAgent Class" href="/docs/sdk/cloaked-agent">
+    Learn about the main SDK class and modes
+  </Card>
+  <Card title="Methods Reference" href="/docs/sdk/methods">
+    Full API documentation
+  </Card>
+</CardGrid>

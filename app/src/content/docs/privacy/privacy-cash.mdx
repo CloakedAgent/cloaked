@@ -1,0 +1,108 @@
+---
+title: "Privacy Cash"
+description: "Fund agents anonymously using Privacy Cash."
+order: 4
+---
+
+## What is Privacy Cash?
+
+[Privacy Cash](https://privacycash.org/) enables anonymous funding of Cloaked Agents. Instead of depositing directly from your wallet (which links you to the agent), you can break the chain using Privacy Cash.
+
+Privacy Cash is a ZK privacy protocol on Solana using **Merkle tree commitments** and **zero-knowledge proofs** to break the link between deposits and withdrawals.
+
+## How It Works
+
+<Steps>
+  <span>**Deposit** SOL from your wallet to Privacy Cash pool</span>
+  <span>**Wait** for mixing (more deposits = better privacy)</span>
+  <span>**Withdraw** to the Cloaked relayer wallet</span>
+  <span>**Relayer creates** your agent on-chain (you never sign)</span>
+  <span>**Result**: No on-chain link between your wallet and the agent</span>
+</Steps>
+
+## The Relayer Flow
+
+When creating a private agent via Privacy Cash, you're not funding the vault directly. Here's the actual flow:
+
+```
+Your Wallet → Privacy Cash Pool → Relayer Wallet → Agent Creation
+```
+
+1. **You withdraw from Privacy Cash** to the Cloaked relayer wallet (not directly to your agent)
+2. **Relayer confirms** receipt of your deposit transaction
+3. **Relayer creates the agent** on-chain, paying all rent and transaction fees
+4. **Relayer keeps 0.01 SOL** as a creation fee (covers rent + operational costs)
+5. **Remaining funds** go to your agent's vault
+
+<Callout type="info" title="Why This Flow?">
+Your wallet never signs the agent creation transaction. The relayer acts as an intermediary, so there's no on-chain connection between your wallet and your agent. The 0.01 SOL fee covers the account rent (~0.00139 SOL) plus relayer operational costs.
+</Callout>
+
+**Example:** You withdraw 0.5 SOL from Privacy Cash to the relayer.
+- Privacy Cash fees: ~0.008 SOL (0.35% + 0.006 network fee)
+- Relayer receives: ~0.492 SOL
+- Relayer keeps: 0.01 SOL (creation fee)
+- Your vault receives: ~0.482 SOL
+
+<Callout type="warning" title="Minimum Recommended: 0.1 SOL">
+We recommend funding at least 0.1 SOL to create a private agent. Smaller amounts get eaten by fees. The combined fees (Privacy Cash + Cloaked creation) total roughly 0.018 SOL minimum.
+</Callout>
+
+## Using Privacy Cash (Frontend)
+
+Privacy Cash is integrated into the Cloaked web app:
+
+1. Connect your wallet
+2. Navigate to "Fund Agent"
+3. Select "Privacy Cash" funding method
+4. Deposit SOL to your private balance
+5. Fund your agent from private balance
+
+<Callout type="info">
+Privacy Cash in the Cloaked web app handles all the complexity for you - just deposit and fund your agents.
+</Callout>
+
+## Privacy Best Practices
+
+<Callout type="warning" title="Critical Privacy Tip">
+**Never deposit to Privacy Cash and fund your agent with the same amount at the same time.** This makes it trivial to link your wallet to the agent. Instead:
+- Deposit a larger amount than you need
+- Wait hours or days before funding
+- Fund with a different amount than you deposited
+</Callout>
+
+## Fees
+
+**Privacy Cash fees** (charged by Privacy Cash protocol):
+
+| Fee Type | Amount |
+|----------|--------|
+| Withdrawal fee | 0.35% of amount |
+| Network & rent | 0.006 SOL |
+
+**Cloaked creation fee** (charged when creating a private agent):
+
+| Fee Type | Amount |
+|----------|--------|
+| Agent creation | 0.01 SOL |
+
+The creation fee covers account rent and relayer operational costs. It's deducted from your Privacy Cash withdrawal before funding the vault.
+
+## Technical Details
+
+Privacy Cash uses:
+
+- **Zero-knowledge proofs** - Prove withdrawal rights without revealing deposit
+- **Merkle tree commitments** - Deposits stored as hashed commitments
+- **Poseidon hashing** - ZK-friendly hash function
+- **Browser WASM** - Client-side proof generation
+
+## Limitations
+
+- **Pool size** - Privacy depends on number of participants
+- **Timing analysis** - Large or unusual amounts are easier to trace
+- **Not instant** - Best privacy requires waiting between operations
+
+<Callout type="info">
+Privacy strength depends on pool activity. More deposits = harder to trace. Don't rush operations.
+</Callout>

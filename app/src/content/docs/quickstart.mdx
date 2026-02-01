@@ -1,0 +1,182 @@
+---
+title: "Quick Start"
+description: "Create your first Cloaked Agent and start spending in 5 minutes."
+order: 4
+---
+
+## Choose Your Path
+
+<CardGrid>
+  <Card title="Use the Dashboard" href="https://cloakedagent.com">
+    Create agents visually with no code. Connect wallet, set limits, done.
+  </Card>
+  <Card title="Use the SDK" href="#installation">
+    Full programmatic control for developers building applications.
+  </Card>
+</CardGrid>
+
+<Callout type="tip" title="Fastest Way to Start">
+Head to [cloakedagent.com](https://cloakedagent.com), connect your wallet, and create an agent in seconds. No code required - just set your limits and fund it.
+</Callout>
+
+---
+
+## SDK Quick Start
+
+For developers who want programmatic control.
+
+### Prerequisites
+
+Before you begin, make sure you have:
+
+- Node.js 20+
+- A Solana wallet with some devnet SOL
+- Basic familiarity with TypeScript
+
+## Installation
+
+<Tabs defaultValue="npm">
+  <TabsList>
+    <TabsTrigger value="npm">npm</TabsTrigger>
+    <TabsTrigger value="yarn">yarn</TabsTrigger>
+    <TabsTrigger value="pnpm">pnpm</TabsTrigger>
+  </TabsList>
+  <TabsContent value="npm">
+```bash
+npm install @cloakedagent/sdk @solana/web3.js @coral-xyz/anchor
+```
+  </TabsContent>
+  <TabsContent value="yarn">
+```bash
+yarn add @cloakedagent/sdk @solana/web3.js @coral-xyz/anchor
+```
+  </TabsContent>
+  <TabsContent value="pnpm">
+```bash
+pnpm add @cloakedagent/sdk @solana/web3.js @coral-xyz/anchor
+```
+  </TabsContent>
+</Tabs>
+
+## Create Your First Agent
+
+<Steps>
+  <span>**Initialize the SDK** with your RPC endpoint</span>
+  <span>**Create an agent** with spending constraints</span>
+  <span>**Fund the agent** with some SOL</span>
+  <span>**Make a spend** transaction</span>
+</Steps>
+
+### Step 1: Initialize
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+import { Connection, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+const connection = new Connection("https://api.devnet.solana.com");
+const owner = Keypair.generate(); // Your wallet keypair
+```
+
+### Step 2: Create the Agent
+
+```typescript
+const { agent, agentKey, signature } = await CloakedAgent.create(
+  connection,
+  { publicKey: owner.publicKey, signTransaction: /* ... */ },
+  {
+    maxPerTx: 0.1 * LAMPORTS_PER_SOL,     // 0.1 SOL per transaction
+    dailyLimit: 0.5 * LAMPORTS_PER_SOL,   // 0.5 SOL per day
+    totalLimit: 1 * LAMPORTS_PER_SOL,     // 1 SOL total
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    initialDeposit: 0.5 * LAMPORTS_PER_SOL, // Fund immediately
+  }
+);
+
+console.log("Agent Key:", agentKey);
+// Save this key securely - it's what your AI will use to spend!
+```
+
+<Callout type="warning" title="Protect the Agent Key">
+The agent key is like a private key - whoever has it can spend within the limits. Never log it, commit it to git, or expose it publicly.
+</Callout>
+
+### Step 3: Check Balance
+
+```typescript
+const balance = await agent.getBalance();
+console.log(`Balance: ${balance} SOL`);
+
+const state = await agent.getState();
+console.log(`Status: ${state.status}`);
+console.log(`Daily Remaining: ${state.spending.dailyRemaining / LAMPORTS_PER_SOL} SOL`);
+```
+
+### Step 4: Spend
+
+```typescript
+// The agent can now spend within its limits
+const result = await agent.spend({
+  destination: new PublicKey("HN7cABqLq46Es1jh92dQQisijVPzvt1jrE8sGpmgJ6ZE"),
+  amount: 0.05 * LAMPORTS_PER_SOL,
+});
+
+console.log(`Sent! Signature: ${result.signature}`);
+```
+
+## Using with AI Agents
+
+The most common use case is giving the agent key to an AI via MCP (Model Context Protocol).
+
+### Claude Desktop / Claude Code
+
+Add to your config:
+
+```json
+{
+  "mcpServers": {
+    "cloaked": {
+      "command": "npx",
+      "args": ["cloaked-mcp"],
+      "env": {
+        "CLOAKED_AGENT_KEY": "your-agent-key-here"
+      }
+    }
+  }
+}
+```
+
+Now Claude can:
+
+- Check the agent's balance with `cloak_balance`
+- Make payments within limits with `cloak_pay`
+- Fetch x402-protected content with `cloak_x402_fetch`
+
+<Callout type="info">
+Set `SOLANA_RPC_URL` for production. Defaults to devnet for testing. We recommend [Helius](https://www.helius.dev/).
+</Callout>
+
+<CardGrid>
+  <Card title="AI Agents Setup" href="/docs/ai-agents/setup">
+    Configure for Claude and other AI assistants
+  </Card>
+  <Card title="SDK Methods" href="/docs/sdk/methods">
+    Full API reference for the SDK
+  </Card>
+</CardGrid>
+
+## Test Your Setup
+
+Use our x402 test endpoint to verify everything works:
+
+```typescript
+// Ask Claude: "Fetch https://api.cloakedagent.com/api/x402-test/paid-content"
+```
+
+This endpoint costs 0.001 SOL (devnet) and confirms your agent can make payments.
+
+## What's Next?
+
+- Learn about [constraint options](/docs/architecture/constraints)
+- Set up [private agents](/docs/privacy/private-agents) for anonymous spending
+- Explore [SDK examples](/docs/sdk/examples) for real-world patterns
+- Read about [x402 protocol](/docs/ai-agents/x402) for pay-per-use APIs

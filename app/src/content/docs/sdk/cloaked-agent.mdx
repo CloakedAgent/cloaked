@@ -1,0 +1,212 @@
+---
+title: "CloakedAgent Class"
+description: "The main class for interacting with Cloaked Agents - supporting agent, owner, and private modes."
+order: 2
+---
+
+## Overview
+
+`CloakedAgent` is the primary class for creating and managing spending accounts. It operates in three modes:
+
+| Mode | Can Spend | Can Manage | Use Case |
+|------|-----------|------------|----------|
+| **Agent Mode** | Yes | No | AI agents with the agent key |
+| **Owner Mode** | No | Yes | Dashboard/UI managing agents |
+| **Private Mode** | No | Yes (via ZK) | Anonymous agent management |
+
+## Creating Agents
+
+### Agent Mode (Has Agent Key)
+
+Use when you have the agent key and need to spend:
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+
+// From existing agent key
+const agent = new CloakedAgent(agentKey, rpcUrl);
+
+// Generate new keypair (doesn't create on-chain yet)
+const { agent, agentKey } = CloakedAgent.generate(rpcUrl);
+```
+
+### Owner Mode (Manage Without Agent Key)
+
+Use when you have the delegate's public key but not the agent key (e.g., dashboard):
+
+```typescript
+// From delegate public key (from URL, on-chain data, etc.)
+const agent = CloakedAgent.forOwner(delegatePubkey, rpcUrl);
+
+// Can freeze, unfreeze, withdraw, close - but NOT spend
+await agent.freeze(ownerSigner);
+```
+
+### Private Mode (ZK Proof-Based)
+
+Use when managing a private agent with master secret:
+
+```typescript
+// Find and load private agent by master secret + nonce
+const agent = await CloakedAgent.forPrivateOwner(masterSecret, nonce, rpcUrl);
+
+// All management operations use ZK proofs
+await agent.freezePrivate();
+```
+
+## Creating On-Chain
+
+### Standard Agent
+
+```typescript
+const { agent, agentKey, signature } = await CloakedAgent.create(
+  connection,
+  owner,  // Signer that pays for creation
+  {
+    maxPerTx: 100_000_000,      // 0.1 SOL per transaction
+    dailyLimit: 500_000_000,    // 0.5 SOL per day
+    totalLimit: 1_000_000_000,  // 1 SOL total
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    initialDeposit: 500_000_000, // Optional: fund immediately
+  }
+);
+
+// Save agentKey securely - this is what your AI will use!
+```
+
+### Private Agent (Direct)
+
+Creates agent with ZK commitment instead of owner pubkey:
+
+```typescript
+const { agent, agentKey, signature } = await CloakedAgent.createPrivate(
+  connection,
+  payer,        // Pays for creation (visible on-chain)
+  masterSecret, // From wallet signature
+  nonce,        // Agent index (0, 1, 2...)
+  {
+    maxPerTx: 100_000_000,
+    dailyLimit: 500_000_000,
+    totalLimit: 1_000_000_000,
+  }
+);
+```
+
+### Private Agent via Relayer (Most Private)
+
+Your wallet never appears on-chain - maximum privacy:
+
+```typescript
+const { agent, agentKey, signature, vaultPda } = await CloakedAgent.createPrivateViaRelayer(
+  masterSecret,
+  nonce,
+  { maxPerTx, dailyLimit, totalLimit, expiresAt },
+  depositSignature,  // From Privacy Cash deposit
+  depositAmount,     // Total amount (includes 0.01 SOL fee)
+  rpcUrl
+);
+```
+
+### Private Agent with Own Relayer (Advanced)
+
+For power users who want to avoid the 0.01 SOL relayer fee by providing their own keypair:
+
+```typescript
+import { Keypair } from "@solana/web3.js";
+
+const relayerKeypair = Keypair.generate(); // Your own keypair
+// Fund this keypair first - it will pay rent (~0.00138 SOL)
+
+const { agent, agentKey, signature, vaultPda } = await CloakedAgent.createPrivateWithRelayer(
+  masterSecret,
+  nonce,
+  { maxPerTx, dailyLimit, totalLimit, expiresAt },
+  relayerKeypair,
+  rpcUrl
+);
+
+// Fund the vault separately via Privacy Cash after creation
+```
+
+> **Note:** Using your own relayer saves fees but reduces privacy - our relayer mixes your transactions with other users.
+
+<Callout type="tip" title="Privacy Mode Creation Options">
+- **Standard Mode**: Owner wallet stored on-chain (visible)
+- **Private Mode**: ZK commitment stored instead (owner hidden)
+
+For private agents, you choose how to *create* them:
+- **Direct**: You pay for creation (payer visible, but not linked as owner)
+- **Via Relayer**: Funds come through Privacy Cash (maximum anonymity)
+- **Own Relayer**: Bring your own keypair, no fees, full control
+</Callout>
+
+## Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `publicKey` | `PublicKey` | The agent's delegate public key |
+| `agentStatePda` | `PublicKey` | PDA storing agent state |
+| `vaultPda` | `PublicKey` | PDA holding the SOL balance |
+| `isPrivateMode` | `boolean` | Whether agent is in private mode |
+| `ownerCommitment` | `Uint8Array \| null` | ZK commitment (private mode only) |
+
+## Types
+
+### CreateAgentOptions
+
+```typescript
+interface CreateAgentOptions {
+  delegate?: PublicKey;     // Optional - SDK generates if not provided
+  maxPerTx?: number;        // Max per transaction (0 = unlimited)
+  dailyLimit?: number;      // Max per day (0 = unlimited)
+  totalLimit?: number;      // Lifetime max (0 = unlimited)
+  expiresAt?: Date | null;  // When agent expires (null = never)
+  initialDeposit?: number;  // Initial funding in lamports
+}
+```
+
+### CloakedAgentState
+
+```typescript
+interface CloakedAgentState {
+  address: PublicKey;
+  owner: PublicKey | null;      // null for private agents
+  ownerCommitment: Uint8Array;  // ZK commitment
+  delegate: PublicKey;
+  balance: number;              // in lamports
+
+  constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+    expiresAt: Date | null;
+    frozen: boolean;
+  };
+
+  spending: {
+    totalSpent: number;
+    dailySpent: number;
+    dailyRemaining: number;
+    totalRemaining: number;
+  };
+
+  status: "active" | "frozen" | "expired";
+  createdAt: Date;
+  isPrivate: boolean;
+}
+```
+
+<Callout type="warning" title="Agent Key Security">
+The agent key is a private key. Whoever has it can spend within limits. Never log it, commit it to git, or expose it in error messages.
+</Callout>
+
+## Next Steps
+
+<CardGrid>
+  <Card title="Methods Reference" href="/docs/sdk/methods">
+    Complete API for all operations
+  </Card>
+  <Card title="Examples" href="/docs/sdk/examples">
+    Real-world usage patterns
+  </Card>
+</CardGrid>

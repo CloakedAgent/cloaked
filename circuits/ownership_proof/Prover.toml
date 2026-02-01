@@ -1,0 +1,8 @@
+# Test inputs for ownership proof circuit
+# agent_secret: the private input (known only to prover)
+# commitment: the public input (poseidon hash of agent_secret)
+
+# Test value: 12345
+# commitment = poseidon(12345)
+agent_secret = "12345"
+commitment = "0x096f56a93ef8bcf4f5efc79d0967649f93d08eff0af7dca5a4f9aa8db1a434b6"

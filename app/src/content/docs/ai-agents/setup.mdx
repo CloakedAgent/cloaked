@@ -1,0 +1,156 @@
+---
+title: "Setup"
+description: "Give your AI agents constrained spending power on Solana."
+order: 1
+---
+
+## Overview
+
+There are two ways to give AI agents access to Cloaked spending:
+
+| Method | Best For | Setup |
+|--------|----------|-------|
+| **MCP Server** | Claude Desktop, Claude Code, chat-based agents | Config file + agent key |
+| **SDK Integration** | Custom agents, LangGraph, automation workflows | Code + agent key |
+
+Both methods use the same agent key and enforce the same on-chain constraints.
+
+## Get Your Agent Key
+
+Before setup, you need an agent key from [cloakedagent.com](https://cloakedagent.com):
+
+1. Connect your wallet
+2. Create a new Cloaked Agent with your desired limits
+3. Copy the Agent Key (base58 string)
+
+<Callout type="warning" title="Security">
+The agent key is like a private key - whoever has it can spend within the limits. Never commit it to git or expose it publicly.
+</Callout>
+
+## MCP Server Setup
+
+MCP (Model Context Protocol) is the standard for connecting AI assistants to external tools. Use this for Claude Desktop, Claude Code, or any MCP-compatible agent.
+
+### Installation
+
+```bash
+npm install @cloakedagent/sdk
+```
+
+### Claude Desktop
+
+Add to your config file:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "cloaked": {
+      "command": "npx",
+      "args": ["cloaked-mcp"],
+      "env": {
+        "CLOAKED_AGENT_KEY": "your-agent-key-here"
+      }
+    }
+  }
+}
+```
+
+### Claude Code
+
+Add `.mcp.json` to your project root:
+
+```json
+{
+  "mcpServers": {
+    "cloaked": {
+      "command": "npx",
+      "args": ["cloaked-mcp"],
+      "env": {
+        "CLOAKED_AGENT_KEY": "your-agent-key-here"
+      }
+    }
+  }
+}
+```
+
+### Other MCP Agents
+
+Any MCP-compatible agent (OpenClaw, custom agents) can use the same configuration pattern. See [Automation](/docs/ai-agents/automation) for OpenClaw-specific setup.
+
+## SDK Integration
+
+For programmatic control in custom agents, LangGraph, or automation workflows:
+
+```typescript
+import { CloakedAgent } from "@cloakedagent/sdk";
+import { PublicKey } from "@solana/web3.js";
+
+const agent = new CloakedAgent(
+  process.env.CLOAKED_AGENT_KEY!,
+  process.env.SOLANA_RPC_URL!
+);
+
+// Check balance and limits
+const state = await agent.getState();
+console.log(`Balance: ${state.balance / 1e9} SOL`);
+console.log(`Status: ${state.status}`);
+
+// Make a payment
+const result = await agent.spend({
+  destination: new PublicKey("..."),
+  amount: 10_000_000, // 0.01 SOL in lamports
+});
+```
+
+See [Automation](/docs/ai-agents/automation) for LangGraph, n8n, and serverless examples.
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CLOAKED_AGENT_KEY` | Yes | - | Base58 encoded agent key |
+| `SOLANA_RPC_URL` | Recommended | Devnet | Solana RPC endpoint |
+| `CLOAKED_BACKEND_URL` | No | Production | Backend for relayer operations |
+
+<Callout type="warning" title="Production RPC">
+Devnet is for testing only. For production, use a reliable RPC like [Helius](https://www.helius.dev/).
+</Callout>
+
+## Verify Setup
+
+### MCP
+
+Ask Claude: *"What's my Cloaked agent balance?"*
+
+### SDK
+
+```typescript
+const state = await agent.getState();
+console.log(state.status); // Should be "active"
+```
+
+## Available Tools
+
+Once configured, AI agents can use:
+
+| Tool | Description |
+|------|-------------|
+| `cloak_balance` | Check balance and spending limits |
+| `cloak_status` | Detailed status with health indicator |
+| `cloak_pay` | Send SOL to a destination |
+| `cloak_x402_fetch` | Fetch x402-protected content with auto-payment |
+
+<CardGrid>
+  <Card title="Available Tools" href="/docs/ai-agents/tools">
+    Full tool reference
+  </Card>
+  <Card title="Automation" href="/docs/ai-agents/automation">
+    LangGraph, OpenClaw, n8n integration
+  </Card>
+</CardGrid>
