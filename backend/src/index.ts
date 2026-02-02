@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { PublicKey, Connection } from "@solana/web3.js";
 import dotenv from "dotenv";
 
@@ -1063,10 +1065,103 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 });
 
 // ============================================
-// Start server
+// Start server with WebSocket support
 // ============================================
 
-app.listen(PORT, () => {
+const server = createServer(app);
+
+const wss = new WebSocketServer({ noServer: true });
+
+function getHeliusWsUrl(): string {
+  return RPC_URL.replace("https://", "wss://").replace("http://", "ws://");
+}
+
+server.on("upgrade", (request, socket, head) => {
+  const pathname = request.url?.split("?")[0];
+
+  if (pathname === "/api/rpc") {
+    const clientIp = request.socket.remoteAddress || "unknown";
+    const rateLimit = checkRpcRateLimit(clientIp);
+
+    if (!rateLimit.allowed) {
+      socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (clientWs) => {
+      const heliusWs = new WebSocket(getHeliusWsUrl());
+
+      let isAlive = true;
+      let heliusReady = false;
+      const messageQueue: Buffer[] = [];
+
+      const pingInterval = setInterval(() => {
+        if (!isAlive) {
+          clearInterval(pingInterval);
+          clientWs.terminate();
+          return;
+        }
+        isAlive = false;
+        clientWs.ping();
+      }, 30000);
+
+      clientWs.on("pong", () => {
+        isAlive = true;
+      });
+
+      // Listen for client messages immediately, buffer if Helius not ready
+      clientWs.on("message", (data) => {
+        const msg = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+        if (heliusReady && heliusWs.readyState === WebSocket.OPEN) {
+          heliusWs.send(msg.toString());
+        } else {
+          messageQueue.push(msg);
+        }
+      });
+
+      heliusWs.on("open", () => {
+        heliusReady = true;
+        while (messageQueue.length > 0) {
+          const msg = messageQueue.shift()!;
+          heliusWs.send(msg.toString());
+        }
+      });
+
+      heliusWs.on("message", (data) => {
+        const msg = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(msg.toString());
+        }
+      });
+
+      heliusWs.on("error", (err) => {
+        console.error("[ws-proxy] Helius error:", err.message);
+        clientWs.close(1011, "Upstream connection error");
+      });
+
+      heliusWs.on("close", () => {
+        clearInterval(pingInterval);
+        clientWs.close(1000, "Upstream closed");
+      });
+
+      clientWs.on("close", () => {
+        clearInterval(pingInterval);
+        heliusWs.close();
+      });
+
+      clientWs.on("error", (err) => {
+        console.error("[ws-proxy] Client connection error:", err.message);
+        clearInterval(pingInterval);
+        heliusWs.close();
+      });
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+server.listen(PORT, () => {
   console.log(`[server] Backend running on port ${PORT}`);
 });
 

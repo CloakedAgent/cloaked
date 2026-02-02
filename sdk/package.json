@@ -1,6 +1,6 @@
 {
   "name": "@cloakedagent/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Trustless spending accounts for AI agents on Solana",
   "engines": {
     "node": ">=20.0.0"

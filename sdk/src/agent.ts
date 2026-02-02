@@ -80,7 +80,13 @@ export class CloakedAgent {
     const secretKey = bs58.decode(agentKey);
     this.keypair = Keypair.fromSecretKey(secretKey);
     this.delegatePubkey = this.keypair.publicKey;
-    this.connection = new Connection(rpcUrl, "confirmed");
+
+    // Explicitly set wsEndpoint (solana web3.js adds +1 to port for localhost by default)
+    const wsEndpoint = rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+    this.connection = new Connection(rpcUrl, {
+      commitment: "confirmed",
+      wsEndpoint,
+    });
 
     // Derive the legacy PDA (seeds = ["token", delegate]) - kept for backward compatibility
     const [pda, bump] = PublicKey.findProgramAddressSync(
@@ -107,7 +113,14 @@ export class CloakedAgent {
     const instance = Object.create(CloakedAgent.prototype);
     instance.keypair = null;
     instance.delegatePubkey = pubkey;
-    instance.connection = new Connection(rpcUrl, "confirmed");
+
+    // Explicitly set wsEndpoint (solana web3.js adds +1 to port for localhost by default)
+    const wsEndpoint = rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+    instance.connection = new Connection(rpcUrl, {
+      commitment: "confirmed",
+      wsEndpoint,
+    });
+
     instance._ownerCommitment = null;
     instance._agentSecret = null;
     instance._nonce = null;
@@ -137,7 +150,13 @@ export class CloakedAgent {
     rpcUrl: string
   ): Promise<CloakedAgent> {
     const { agentSecret, commitment } = await deriveAgentSecrets(masterSecret, nonce);
-    const connection = new Connection(rpcUrl, "confirmed");
+
+    // Explicitly set wsEndpoint (solana web3.js adds +1 to port for localhost by default)
+    const wsEndpoint = rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+    const connection = new Connection(rpcUrl, {
+      commitment: "confirmed",
+      wsEndpoint,
+    });
 
     // Find agent by commitment
     const found = await findAgentByCommitment(commitment, connection);
@@ -960,7 +979,12 @@ export class CloakedAgent {
     relayerKeypair: Keypair,
     rpcUrl: string
   ): Promise<{ agent: CloakedAgent; agentKey: string; signature: string; vaultPda: PublicKey }> {
-    const connection = new Connection(rpcUrl, "confirmed");
+    // Explicitly set wsEndpoint (solana web3.js adds +1 to port for localhost by default)
+    const wsEndpoint = rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+    const connection = new Connection(rpcUrl, {
+      commitment: "confirmed",
+      wsEndpoint,
+    });
 
     // Derive commitment from master secret and nonce
     const { agentSecret, commitment } = await deriveAgentSecrets(masterSecret, nonce);
