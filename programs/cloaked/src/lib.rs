@@ -1,13 +1,24 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{program::invoke, program::invoke_signed, system_instruction, instruction::Instruction};
 
+#[cfg(not(feature = "no-entrypoint"))]
+use solana_security_txt::security_txt;
+
 declare_id!("3yMjzAeXXc5FZRUrJ1YqP4YMPhPd5bBxHQ6npNSPCUwB");
 
+#[cfg(not(feature = "no-entrypoint"))]
+security_txt! {
+    name: "Cloaked",
+    project_url: "https://cloakedagent.com",
+    contacts: "email:security@cloakedagent.com",
+    source_code: "https://github.com/cloakedagent/cloaked",
+    policy: "https://github.com/cloakedagent/cloaked/blob/main/SECURITY.md"
+}
+
 /// ZK Verifier program ID (Attestation verifier for hybrid client-side proving)
-/// Old ownership verifier: ABxTRDC3MSo4KMtwNwMhgqxmi312GLTUsYXhGRzvQPkH
 pub const ZK_VERIFIER_PROGRAM_ID: Pubkey = pubkey!("G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F");
 
-/// Fixed fee for private operations (~$0.01, covers tx fee + margin)
+/// Fixed fee for private operations (covers tx fee + margin)
 pub const PRIVATE_OPERATION_FEE: u64 = 50_000;
 
 /// Fee reimbursement for spend operations (~0.00001 SOL, covers tx fee + margin)

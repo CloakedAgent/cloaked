@@ -64,17 +64,6 @@ We will keep you informed throughout the process.
 - On-chain: only commitments visible, not secrets
 - Agent ownership proven without revealing master secret
 
-## Bug Bounty
-
-We do not currently have a formal bug bounty program. However, we deeply appreciate responsible disclosure and will:
-
-- Credit you in our changelog (if desired)
-- Provide a reference letter for security researchers (if requested)
-
-## Security Updates
-
-Security patches are released as soon as possible after verification. Watch this repository for releases or subscribe to notifications.
-
 ## Contact
 
 - Security issues: security@cloakedagent.com
