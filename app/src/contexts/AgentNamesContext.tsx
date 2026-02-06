@@ -53,6 +53,14 @@ function saveToStorage(data: AgentDataStore): void {
   }
 }
 
+const AGENT_NAME_REGEX = /^[a-zA-Z0-9\s\-_.]{1,50}$/;
+
+function sanitizeName(name: string): string {
+  const trimmed = name.trim().slice(0, 50);
+  if (AGENT_NAME_REGEX.test(trimmed)) return trimmed;
+  return trimmed.replace(/[^a-zA-Z0-9\s\-_.]/g, "").slice(0, 50);
+}
+
 function normalizeEntry(entry: AgentData | string | undefined): AgentData | null {
   if (!entry) return null;
   if (typeof entry === "string") {
@@ -86,12 +94,13 @@ export function AgentNamesProvider({ children }: { children: ReactNode }) {
   );
 
   const setName = useCallback((vaultAddress: string, name: string) => {
+    const safeName = sanitizeName(name);
     setData((prev) => {
       const existing = normalizeEntry(prev[vaultAddress]);
       const updated: AgentDataStore = {
         ...prev,
         [vaultAddress]: {
-          name,
+          name: safeName,
           icon: existing?.icon || DEFAULT_AGENT_ICON,
         },
       };
@@ -116,10 +125,11 @@ export function AgentNamesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setAgentData = useCallback((vaultAddress: string, name: string, icon: AgentIconType) => {
+    const safeName = sanitizeName(name);
     setData((prev) => {
       const updated: AgentDataStore = {
         ...prev,
-        [vaultAddress]: { name, icon },
+        [vaultAddress]: { name: safeName, icon },
       };
       saveToStorage(updated);
       return updated;

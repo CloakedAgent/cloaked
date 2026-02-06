@@ -115,10 +115,12 @@ pub mod cloaked {
         total_limit: u64,
         expires_at: i64,
     ) -> Result<()> {
+        require!(owner_commitment != [0u8; 32], ErrorCode::InvalidCommitment);
+
         let agent_state = &mut ctx.accounts.cloaked_agent_state;
         let clock = Clock::get()?;
 
-        agent_state.owner = None; // Private mode: no owner pubkey
+        agent_state.owner = None;
         agent_state.owner_commitment = owner_commitment;
         agent_state.delegate = ctx.accounts.delegate.key();
         agent_state.max_per_tx = max_per_tx;
@@ -1094,6 +1096,8 @@ pub enum ErrorCode {
     InvalidVerifierProgram,
     #[msg("Insufficient balance for operation fee")]
     InsufficientBalanceForFee,
+    #[msg("Invalid commitment: cannot be all zeros")]
+    InvalidCommitment,
 }
 
 /// Cloaked Agent state - stores constraints and spending tracking

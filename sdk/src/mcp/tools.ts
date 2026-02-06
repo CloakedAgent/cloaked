@@ -10,6 +10,36 @@ import {
   X402PaymentRequirements,
 } from "./types";
 
+function validateFetchUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "Invalid URL";
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "Only http/https URLs are allowed";
+  }
+
+  const hostname = parsed.hostname;
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal")
+  ) {
+    return "Private/internal URLs are not allowed";
+  }
+
+  return null;
+}
+
 /**
  * Sanitize error messages to prevent key leakage
  * Redacts base58-encoded strings that could be keys (32+ chars)
@@ -225,6 +255,11 @@ export async function handleX402Fetch(
 
   const method = options?.method || "GET";
   const customHeaders = options?.headers || {};
+
+  const urlError = validateFetchUrl(url);
+  if (urlError) {
+    return { success: false, error: urlError, statusCode: 0 };
+  }
 
   try {
     // Step 1: Initial fetch

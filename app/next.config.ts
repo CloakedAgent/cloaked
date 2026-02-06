@@ -23,6 +23,19 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "img-src 'self' data: blob:",
+              "font-src 'self' data: https://fonts.gstatic.com",
+              `connect-src 'self' data: https://api.cloakedagent.com https://api.devnet.solana.com wss://api.devnet.solana.com wss://api.cloakedagent.com${process.env.NODE_ENV === "development" ? " http://localhost:3645 ws://localhost:3645" : ""}`,
+              "worker-src 'self' blob:",
+              "frame-ancestors 'none'",
+            ].join("; "),
+          },
         ],
       },
     ];

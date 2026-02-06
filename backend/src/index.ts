@@ -63,15 +63,15 @@ if (RELAYER_PRIVATE_KEY) {
 
 const app = express();
 
-// CORS configuration - restrict to allowed origins in production
+app.set("trust proxy", 1);
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : ["http://localhost:3000"];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, false);
 
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
