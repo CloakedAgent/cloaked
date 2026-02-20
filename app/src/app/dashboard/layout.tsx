@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react";
 import { Header } from "@/components";
 import { DashboardSidebar } from "@/components/dashboard";
-import { useAgentTokens, usePrivateAgents } from "@/hooks";
+import { useAgentTokens, usePrivateAgents, useAllTokenVaults, useTokenVaultBalances } from "@/hooks";
+import { USDC_MINT_DEVNET } from "@/lib/constants";
 
 export default function DashboardLayout({
   children,
@@ -20,6 +21,8 @@ export default function DashboardLayout({
     refresh: refreshPrivate,
   } = usePrivateAgents();
 
+  const { vaultMap: tokenVaultMap } = useAllTokenVaults();
+  const { balanceMap: usdcBalanceMap } = useTokenVaultBalances(USDC_MINT_DEVNET.toBase58());
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const toggleSidebar = useCallback(() => {
@@ -55,6 +58,8 @@ export default function DashboardLayout({
           hasMasterSecret={hasMasterSecret}
           onUnlockPrivate={handleUnlockPrivate}
           isUnlocking={isSignatureRequested}
+          tokenVaultMap={tokenVaultMap}
+          tokenBalanceMap={usdcBalanceMap}
         />
         <main className="dashboard-main">{children}</main>
       </div>

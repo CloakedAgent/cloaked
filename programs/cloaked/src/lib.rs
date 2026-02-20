@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{program::invoke, program::invoke_signed, system_instruction, instruction::Instruction};
+use anchor_spl::token::{self, Token, TokenAccount, Mint};
+use anchor_spl::associated_token::AssociatedToken;
 
 #[cfg(not(feature = "no-entrypoint"))]
 use solana_security_txt::security_txt;
@@ -724,6 +726,491 @@ pub mod cloaked {
 
         Ok(())
     }
+
+    /// Enable a token for this agent (creates TokenVaultState + ATA)
+    pub fn enable_token(
+        ctx: Context<EnableToken>,
+        max_per_tx: u64,
+        daily_limit: u64,
+        total_limit: u64,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+
+        // Standard mode only — owner must match
+        require!(!agent_state.is_private(), ErrorCode::IsPrivateMode);
+        require!(
+            agent_state.owner == Some(ctx.accounts.owner.key()),
+            ErrorCode::NotOwner
+        );
+
+        let clock = Clock::get()?;
+        let token_state = &mut ctx.accounts.token_vault_state;
+        token_state.agent_state = ctx.accounts.cloaked_agent_state.key();
+        token_state.mint = ctx.accounts.mint.key();
+        token_state.max_per_tx = max_per_tx;
+        token_state.daily_limit = daily_limit;
+        token_state.total_limit = total_limit;
+        token_state.total_spent = 0;
+        token_state.daily_spent = 0;
+        token_state.last_day = clock.unix_timestamp / SECONDS_PER_DAY;
+        token_state.bump = ctx.bumps.token_vault_state;
+        token_state.created_at = clock.unix_timestamp;
+
+        Ok(())
+    }
+
+    /// Spend tokens from vault ATA (delegate-authorized, constraint-enforced)
+    pub fn spend_token(ctx: Context<SpendToken>, amount: u64) -> Result<()> {
+        let clock = Clock::get()?;
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+
+        // Global checks from parent agent state
+        require!(!agent_state.frozen, ErrorCode::AgentFrozen);
+        if agent_state.expires_at > 0 {
+            require!(clock.unix_timestamp < agent_state.expires_at, ErrorCode::AgentExpired);
+        }
+
+        // Per-token constraint checks
+        let token_state = &mut ctx.accounts.token_vault_state;
+
+        if token_state.max_per_tx > 0 {
+            require!(amount <= token_state.max_per_tx, ErrorCode::ExceedsPerTxLimit);
+        }
+
+        let current_day = clock.unix_timestamp / SECONDS_PER_DAY;
+        if current_day > token_state.last_day {
+            token_state.daily_spent = 0;
+            token_state.last_day = current_day;
+        }
+
+        if token_state.daily_limit > 0 {
+            require!(
+                token_state.daily_spent.checked_add(amount).ok_or(ErrorCode::Overflow)?
+                    <= token_state.daily_limit,
+                ErrorCode::ExceedsDailyLimit
+            );
+        }
+
+        if token_state.total_limit > 0 {
+            require!(
+                token_state.total_spent.checked_add(amount).ok_or(ErrorCode::Overflow)?
+                    <= token_state.total_limit,
+                ErrorCode::ExceedsTotalLimit
+            );
+        }
+
+        // Check SOL vault has enough for fee reimbursement
+        require!(
+            ctx.accounts.vault.lamports() >= SPEND_FEE_REIMBURSEMENT,
+            ErrorCode::InsufficientBalanceForFee
+        );
+
+        // Update spending tracking
+        token_state.daily_spent = token_state.daily_spent.checked_add(amount).ok_or(ErrorCode::Overflow)?;
+        token_state.total_spent = token_state.total_spent.checked_add(amount).ok_or(ErrorCode::Overflow)?;
+
+        // 1. Transfer tokens: vault ATA -> destination
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.vault_token_account.to_account_info(),
+                    to: ctx.accounts.destination_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+        )?;
+
+        // 2. Reimburse fee payer from SOL vault
+        invoke_signed(
+            &system_instruction::transfer(
+                ctx.accounts.vault.key,
+                ctx.accounts.fee_payer.key,
+                SPEND_FEE_REIMBURSEMENT,
+            ),
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.fee_payer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+
+        Ok(())
+    }
+
+    /// Withdraw tokens (owner-only, bypasses per-token constraints)
+    pub fn withdraw_token(ctx: Context<WithdrawToken>, amount: u64) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(!agent_state.is_private(), ErrorCode::IsPrivateMode);
+        require!(
+            agent_state.owner == Some(ctx.accounts.owner.key()),
+            ErrorCode::NotOwner
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.vault_token_account.to_account_info(),
+                    to: ctx.accounts.destination_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+        )?;
+
+        Ok(())
+    }
+
+    /// Update per-token constraints (owner-only)
+    pub fn update_token_constraints(
+        ctx: Context<UpdateTokenConstraints>,
+        max_per_tx: Option<u64>,
+        daily_limit: Option<u64>,
+        total_limit: Option<u64>,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(!agent_state.is_private(), ErrorCode::IsPrivateMode);
+        require!(
+            agent_state.owner == Some(ctx.accounts.owner.key()),
+            ErrorCode::NotOwner
+        );
+
+        let token_state = &mut ctx.accounts.token_vault_state;
+        if let Some(v) = max_per_tx { token_state.max_per_tx = v; }
+        if let Some(v) = daily_limit { token_state.daily_limit = v; }
+        if let Some(v) = total_limit { token_state.total_limit = v; }
+
+        Ok(())
+    }
+
+    /// Disable a token — transfer remaining tokens to owner, close state
+    pub fn disable_token(ctx: Context<DisableToken>) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(!agent_state.is_private(), ErrorCode::IsPrivateMode);
+        require!(
+            agent_state.owner == Some(ctx.accounts.owner.key()),
+            ErrorCode::NotOwner
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        // Transfer remaining token balance to owner
+        let remaining = ctx.accounts.vault_token_account.amount;
+        if remaining > 0 {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::Transfer {
+                        from: ctx.accounts.vault_token_account.to_account_info(),
+                        to: ctx.accounts.destination_token_account.to_account_info(),
+                        authority: ctx.accounts.vault.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                remaining,
+            )?;
+        }
+
+        // Close the ATA (return rent to owner)
+        token::close_account(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::CloseAccount {
+                    account: ctx.accounts.vault_token_account.to_account_info(),
+                    destination: ctx.accounts.owner.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+        )?;
+
+        // TokenVaultState is closed by Anchor's close constraint → rent to owner
+        Ok(())
+    }
+
+    /// Enable a token with ZK proof (private mode)
+    pub fn enable_token_private(
+        ctx: Context<EnableTokenPrivate>,
+        proof_bytes: Vec<u8>,
+        witness_bytes: Vec<u8>,
+        max_per_tx: u64,
+        daily_limit: u64,
+        total_limit: u64,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(agent_state.is_private(), ErrorCode::NotPrivateMode);
+
+        verify_zk_proof(
+            &ctx.accounts.zk_verifier,
+            &proof_bytes,
+            &witness_bytes,
+            &agent_state.owner_commitment,
+        )?;
+
+        // Charge operation fee from vault
+        require!(
+            ctx.accounts.vault.lamports() >= PRIVATE_OPERATION_FEE,
+            ErrorCode::InsufficientBalanceForFee
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        invoke_signed(
+            &system_instruction::transfer(
+                ctx.accounts.vault.key,
+                ctx.accounts.fee_recipient.key,
+                PRIVATE_OPERATION_FEE,
+            ),
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.fee_recipient.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+
+        let clock = Clock::get()?;
+        let token_state = &mut ctx.accounts.token_vault_state;
+        token_state.agent_state = ctx.accounts.cloaked_agent_state.key();
+        token_state.mint = ctx.accounts.mint.key();
+        token_state.max_per_tx = max_per_tx;
+        token_state.daily_limit = daily_limit;
+        token_state.total_limit = total_limit;
+        token_state.total_spent = 0;
+        token_state.daily_spent = 0;
+        token_state.last_day = clock.unix_timestamp / SECONDS_PER_DAY;
+        token_state.bump = ctx.bumps.token_vault_state;
+        token_state.created_at = clock.unix_timestamp;
+
+        Ok(())
+    }
+
+    /// Withdraw tokens with ZK proof (private mode, bypasses constraints)
+    pub fn withdraw_token_private(
+        ctx: Context<WithdrawTokenPrivate>,
+        proof_bytes: Vec<u8>,
+        witness_bytes: Vec<u8>,
+        amount: u64,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(agent_state.is_private(), ErrorCode::NotPrivateMode);
+
+        verify_zk_proof(
+            &ctx.accounts.zk_verifier,
+            &proof_bytes,
+            &witness_bytes,
+            &agent_state.owner_commitment,
+        )?;
+
+        require!(
+            ctx.accounts.vault.lamports() >= PRIVATE_OPERATION_FEE,
+            ErrorCode::InsufficientBalanceForFee
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        // Fee transfer
+        invoke_signed(
+            &system_instruction::transfer(
+                ctx.accounts.vault.key,
+                ctx.accounts.fee_recipient.key,
+                PRIVATE_OPERATION_FEE,
+            ),
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.fee_recipient.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+
+        // Token transfer
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.vault_token_account.to_account_info(),
+                    to: ctx.accounts.destination_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+        )?;
+
+        Ok(())
+    }
+
+    /// Update per-token constraints with ZK proof (private mode)
+    pub fn update_token_constraints_private(
+        ctx: Context<UpdateTokenConstraintsPrivate>,
+        proof_bytes: Vec<u8>,
+        witness_bytes: Vec<u8>,
+        max_per_tx: Option<u64>,
+        daily_limit: Option<u64>,
+        total_limit: Option<u64>,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(agent_state.is_private(), ErrorCode::NotPrivateMode);
+
+        verify_zk_proof(
+            &ctx.accounts.zk_verifier,
+            &proof_bytes,
+            &witness_bytes,
+            &agent_state.owner_commitment,
+        )?;
+
+        require!(
+            ctx.accounts.vault.lamports() >= PRIVATE_OPERATION_FEE,
+            ErrorCode::InsufficientBalanceForFee
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        invoke_signed(
+            &system_instruction::transfer(
+                ctx.accounts.vault.key,
+                ctx.accounts.fee_recipient.key,
+                PRIVATE_OPERATION_FEE,
+            ),
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.fee_recipient.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+
+        let token_state = &mut ctx.accounts.token_vault_state;
+        if let Some(v) = max_per_tx { token_state.max_per_tx = v; }
+        if let Some(v) = daily_limit { token_state.daily_limit = v; }
+        if let Some(v) = total_limit { token_state.total_limit = v; }
+
+        Ok(())
+    }
+
+    /// Disable a token with ZK proof (private mode) -- transfer remaining tokens, close ATA + state
+    pub fn disable_token_private(
+        ctx: Context<DisableTokenPrivate>,
+        proof_bytes: Vec<u8>,
+        witness_bytes: Vec<u8>,
+    ) -> Result<()> {
+        let agent_state = &ctx.accounts.cloaked_agent_state;
+        require!(agent_state.is_private(), ErrorCode::NotPrivateMode);
+
+        verify_zk_proof(
+            &ctx.accounts.zk_verifier,
+            &proof_bytes,
+            &witness_bytes,
+            &agent_state.owner_commitment,
+        )?;
+
+        require!(
+            ctx.accounts.vault.lamports() >= PRIVATE_OPERATION_FEE,
+            ErrorCode::InsufficientBalanceForFee
+        );
+
+        let agent_state_key = ctx.accounts.cloaked_agent_state.key();
+        let vault_bump = ctx.bumps.vault;
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"vault",
+            agent_state_key.as_ref(),
+            &[vault_bump],
+        ]];
+
+        // Fee transfer
+        invoke_signed(
+            &system_instruction::transfer(
+                ctx.accounts.vault.key,
+                ctx.accounts.fee_recipient.key,
+                PRIVATE_OPERATION_FEE,
+            ),
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.fee_recipient.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+
+        // Transfer remaining tokens
+        let remaining = ctx.accounts.vault_token_account.amount;
+        if remaining > 0 {
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    token::Transfer {
+                        from: ctx.accounts.vault_token_account.to_account_info(),
+                        to: ctx.accounts.destination_token_account.to_account_info(),
+                        authority: ctx.accounts.vault.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                remaining,
+            )?;
+        }
+
+        // Close the ATA (return rent to fee_recipient/relayer)
+        token::close_account(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::CloseAccount {
+                    account: ctx.accounts.vault_token_account.to_account_info(),
+                    destination: ctx.accounts.fee_recipient.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                },
+                signer_seeds,
+            ),
+        )?;
+
+        // TokenVaultState is closed by Anchor's close constraint -> rent to fee_recipient
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1064,6 +1551,386 @@ pub struct WithdrawPrivate<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct EnableToken<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        init,
+        payer = owner,
+        space = TokenVaultState::SIZE,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump,
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    /// SOL vault
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    /// Token ATA owned by vault PDA (created via CPI)
+    #[account(
+        init,
+        payer = owner,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// Owner signs and pays rent (recoverable on disable)
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SpendToken<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", delegate.key().as_ref()],
+        bump = cloaked_agent_state.bump,
+        has_one = delegate,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        mut,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+        constraint = token_vault_state.mint == mint.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    /// SOL vault (for fee reimbursement)
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    /// Token ATA owned by vault PDA
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    /// Destination token account (must exist)
+    #[account(mut)]
+    pub destination_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    pub delegate: Signer<'info>,
+
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawToken<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    /// Destination token account
+    #[account(mut)]
+    pub destination_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// Owner bypasses constraints
+    pub owner: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateTokenConstraints<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        mut,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    pub mint: Account<'info, Mint>,
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DisableToken<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        mut,
+        close = owner,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    /// Owner's token account to receive remaining tokens
+    #[account(mut)]
+    pub destination_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+// === Private Mode Token Account Contexts ===
+
+#[derive(Accounts)]
+pub struct EnableTokenPrivate<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        init,
+        payer = fee_payer,
+        space = TokenVaultState::SIZE,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump,
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(
+        init,
+        payer = fee_payer,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// CHECK: Any account can receive fee reimbursement
+    #[account(mut)]
+    pub fee_recipient: AccountInfo<'info>,
+
+    /// Fee payer for account creation (relayer)
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    /// CHECK: Verified in instruction to match ZK_VERIFIER_PROGRAM_ID
+    pub zk_verifier: AccountInfo<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct WithdrawTokenPrivate<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    /// Destination token account
+    #[account(mut)]
+    pub destination_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// CHECK: Any account can receive fee reimbursement
+    #[account(mut)]
+    pub fee_recipient: AccountInfo<'info>,
+
+    /// CHECK: Verified in instruction to match ZK_VERIFIER_PROGRAM_ID
+    pub zk_verifier: AccountInfo<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateTokenConstraintsPrivate<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        mut,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// CHECK: Any account can receive fee reimbursement
+    #[account(mut)]
+    pub fee_recipient: AccountInfo<'info>,
+
+    /// CHECK: Verified in instruction to match ZK_VERIFIER_PROGRAM_ID
+    pub zk_verifier: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DisableTokenPrivate<'info> {
+    #[account(
+        seeds = [b"cloaked_agent_state", cloaked_agent_state.delegate.as_ref()],
+        bump = cloaked_agent_state.bump,
+    )]
+    pub cloaked_agent_state: Account<'info, CloakedAgentState>,
+
+    #[account(
+        mut,
+        close = fee_recipient,
+        seeds = [b"token_vault_state", cloaked_agent_state.key().as_ref(), mint.key().as_ref()],
+        bump = token_vault_state.bump,
+        constraint = token_vault_state.agent_state == cloaked_agent_state.key(),
+    )]
+    pub token_vault_state: Account<'info, TokenVaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", cloaked_agent_state.key().as_ref()],
+        bump,
+    )]
+    pub vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    /// Destination token account for remaining tokens
+    #[account(mut)]
+    pub destination_token_account: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+
+    /// Fee recipient (relayer) - gets operation fee + account rent on close
+    /// CHECK: Any account can receive fee reimbursement
+    #[account(mut)]
+    pub fee_recipient: AccountInfo<'info>,
+
+    /// CHECK: Verified in instruction to match ZK_VERIFIER_PROGRAM_ID
+    pub zk_verifier: AccountInfo<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Insufficient balance in agent")]
@@ -1098,6 +1965,10 @@ pub enum ErrorCode {
     InsufficientBalanceForFee,
     #[msg("Invalid commitment: cannot be all zeros")]
     InvalidCommitment,
+    #[msg("Token not enabled for this agent")]
+    TokenNotEnabled,
+    #[msg("Invalid token mint")]
+    InvalidMint,
 }
 
 /// Cloaked Agent state - stores constraints and spending tracking
@@ -1148,4 +2019,25 @@ impl CloakedAgentState {
     pub fn is_private(&self) -> bool {
         self.owner.is_none()
     }
+}
+
+/// Per-token constraints and spending tracking
+/// Seeds: ["token_vault_state", agent_state, mint]
+#[account]
+pub struct TokenVaultState {
+    pub agent_state: Pubkey,    // parent CloakedAgentState
+    pub mint: Pubkey,           // token mint (e.g., USDC)
+    pub max_per_tx: u64,        // in token native units (6 decimals for USDC)
+    pub daily_limit: u64,
+    pub total_limit: u64,
+    pub total_spent: u64,
+    pub daily_spent: u64,
+    pub last_day: i64,
+    pub bump: u8,
+    pub created_at: i64,
+}
+
+impl TokenVaultState {
+    // 8 (discriminator) + 32 + 32 + 8*6 + 1 + 8 = 129 bytes
+    pub const SIZE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 1 + 8;
 }

@@ -24,7 +24,21 @@ Get the agent's current balance and spending limits.
   "total_remaining": 800000000,
   "expires_in_days": 7,
   "frozen": false,
-  "status": "active"
+  "status": "active",
+  "tokens": [
+    {
+      "symbol": "USDC",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "balance": 50000000,
+      "balance_units": 50.0,
+      "daily_spent": 5000000,
+      "daily_limit": 50000000,
+      "daily_remaining": 45000000,
+      "total_spent": 10000000,
+      "total_limit": 500000000,
+      "total_remaining": 490000000
+    }
+  ]
 }
 ```
 
@@ -36,6 +50,7 @@ Get the agent's current balance and spending limits.
 | `total_remaining` | How much can still be spent lifetime |
 | `expires_in_days` | Days until agent expires (null if never) |
 | `status` | `"active"`, `"frozen"`, or `"expired"` |
+| `tokens` | Array of enabled token balances and limits |
 
 ---
 
@@ -91,6 +106,7 @@ Send SOL to a destination address.
 |------|------|----------|-------------|
 | `destination` | string | Yes | Recipient's Solana address (base58) |
 | `amount` | number | Yes | Amount in SOL (e.g., 0.1 for 100 milliSOL) |
+| `token` | string | No | Token symbol (e.g., `"USDC"`) or mint address. Omit for SOL. |
 | `agent_key` | string | No | Override the default agent key |
 
 **Response (success):**
@@ -111,6 +127,15 @@ Send SOL to a destination address.
   "remaining_balance": 0,
   "daily_remaining": 0,
   "error": "Exceeds daily limit"
+}
+```
+
+**Example: Pay USDC**
+```json
+{
+  "destination": "HN7cAB...",
+  "amount": 5.0,
+  "token": "USDC"
 }
 ```
 

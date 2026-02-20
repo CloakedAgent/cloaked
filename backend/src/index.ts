@@ -26,6 +26,10 @@ import {
   WithdrawPrivateParams,
   ClosePrivateParams,
   SpendCosignParams,
+  EnableTokenPrivateParams,
+  WithdrawTokenPrivateParams,
+  UpdateTokenConstraintsPrivateParams,
+  DisableTokenPrivateParams,
   CREATION_FEE,
   MIN_DEPOSIT,
   parseCloakedError,
@@ -975,6 +979,147 @@ app.post("/api/relayer/close-private", async (req: Request, res: Response): Prom
     res.json({ signature });
   } catch (error) {
     handlePrivateOpError(res, error, "close agent");
+  }
+});
+
+/**
+ * POST /api/relayer/enable-token-private
+ * Enable a token for a private agent via relayer
+ */
+app.post("/api/relayer/enable-token-private", async (req: Request, res: Response): Promise<void> => {
+  const validated = validatePrivateOp(req, res);
+  if (!validated) return;
+
+  const { relayer, agentStatePda, proofBytes, witnessBytes, clientIp } = validated;
+  const { mint, maxPerTx, dailyLimit, totalLimit } = req.body;
+
+  if (!mint || typeof mint !== "string") {
+    res.status(400).json({ error: "Missing or invalid mint" });
+    return;
+  }
+
+  try {
+    const params: EnableTokenPrivateParams = {
+      agentStatePda,
+      proofBytes,
+      witnessBytes,
+      mint,
+      maxPerTx: maxPerTx ?? 0,
+      dailyLimit: dailyLimit ?? 0,
+      totalLimit: totalLimit ?? 0,
+    };
+    const signature = await relayer.enableTokenPrivate(params, clientIp);
+    res.json({ signature });
+  } catch (error) {
+    handlePrivateOpError(res, error, "enable token");
+  }
+});
+
+/**
+ * POST /api/relayer/withdraw-token-private
+ * Withdraw tokens from a private agent via relayer
+ */
+app.post("/api/relayer/withdraw-token-private", async (req: Request, res: Response): Promise<void> => {
+  const validated = validatePrivateOp(req, res);
+  if (!validated) return;
+
+  const { relayer, agentStatePda, proofBytes, witnessBytes, clientIp } = validated;
+  const { mint, amount, destinationTokenAccount } = req.body;
+
+  if (!mint || typeof mint !== "string") {
+    res.status(400).json({ error: "Missing or invalid mint" });
+    return;
+  }
+  if (typeof amount !== "number" || amount <= 0) {
+    res.status(400).json({ error: "Missing or invalid amount" });
+    return;
+  }
+  if (!destinationTokenAccount || typeof destinationTokenAccount !== "string") {
+    res.status(400).json({ error: "Missing or invalid destinationTokenAccount" });
+    return;
+  }
+
+  try {
+    const params: WithdrawTokenPrivateParams = {
+      agentStatePda,
+      proofBytes,
+      witnessBytes,
+      mint,
+      amount,
+      destinationTokenAccount,
+    };
+    const signature = await relayer.withdrawTokenPrivate(params, clientIp);
+    res.json({ signature });
+  } catch (error) {
+    handlePrivateOpError(res, error, "withdraw token");
+  }
+});
+
+/**
+ * POST /api/relayer/update-token-constraints-private
+ * Update token constraints for a private agent via relayer
+ */
+app.post("/api/relayer/update-token-constraints-private", async (req: Request, res: Response): Promise<void> => {
+  const validated = validatePrivateOp(req, res);
+  if (!validated) return;
+
+  const { relayer, agentStatePda, proofBytes, witnessBytes, clientIp } = validated;
+  const { mint, maxPerTx, dailyLimit, totalLimit } = req.body;
+
+  if (!mint || typeof mint !== "string") {
+    res.status(400).json({ error: "Missing or invalid mint" });
+    return;
+  }
+
+  try {
+    const params: UpdateTokenConstraintsPrivateParams = {
+      agentStatePda,
+      proofBytes,
+      witnessBytes,
+      mint,
+      maxPerTx: maxPerTx ?? null,
+      dailyLimit: dailyLimit ?? null,
+      totalLimit: totalLimit ?? null,
+    };
+    const signature = await relayer.updateTokenConstraintsPrivate(params, clientIp);
+    res.json({ signature });
+  } catch (error) {
+    handlePrivateOpError(res, error, "update token constraints");
+  }
+});
+
+/**
+ * POST /api/relayer/disable-token-private
+ * Disable a token for a private agent via relayer
+ */
+app.post("/api/relayer/disable-token-private", async (req: Request, res: Response): Promise<void> => {
+  const validated = validatePrivateOp(req, res);
+  if (!validated) return;
+
+  const { relayer, agentStatePda, proofBytes, witnessBytes, clientIp } = validated;
+  const { mint, destinationTokenAccount } = req.body;
+
+  if (!mint || typeof mint !== "string") {
+    res.status(400).json({ error: "Missing or invalid mint" });
+    return;
+  }
+  if (!destinationTokenAccount || typeof destinationTokenAccount !== "string") {
+    res.status(400).json({ error: "Missing or invalid destinationTokenAccount" });
+    return;
+  }
+
+  try {
+    const params: DisableTokenPrivateParams = {
+      agentStatePda,
+      proofBytes,
+      witnessBytes,
+      mint,
+      destinationTokenAccount,
+    };
+    const signature = await relayer.disableTokenPrivate(params, clientIp);
+    res.json({ signature });
+  } catch (error) {
+    handlePrivateOpError(res, error, "disable token");
   }
 });
 

@@ -50,3 +50,17 @@ export const WITHDRAWAL_FEE_PERCENTAGE = 0.005; // 0.5%
 
 // Account sizes (must match on-chain program)
 export const CLOAKED_AGENT_STATE_SIZE = 171;
+export const TOKEN_VAULT_STATE_SIZE = 129;
+
+// Known SPL Token Mints
+export const KNOWN_TOKENS: Record<string, { symbol: string; decimals: number; name: string; network: "mainnet-beta" | "devnet" }> = {
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": { symbol: "USDC", decimals: 6, name: "USD Coin", network: "mainnet-beta" },
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": { symbol: "USDC", decimals: 6, name: "USD Coin", network: "devnet" },
+};
+
+// Tokens filtered by current network
+export const NETWORK_TOKENS = Object.fromEntries(
+  Object.entries(KNOWN_TOKENS).filter(([, info]) => info.network === NETWORK)
+);
+
+export const USDC_MINT_DEVNET = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");

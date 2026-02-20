@@ -2,6 +2,9 @@
 
 **Trustless spending accounts for AI agents on Solana**
 
+[![npm](https://img.shields.io/npm/v/@cloakedagent/sdk?label=SDK&color=10b981)](https://www.npmjs.com/package/@cloakedagent/sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-8B5CF6.svg)](LICENSE)
+
 [cloakedagent.com](https://cloakedagent.com)
 
 ---
@@ -31,7 +34,9 @@ Agent-side limits don't work - the agent has the keys and can bypass its own rul
 │  ├── max_per_tx: 0.1 SOL                                        │
 │  ├── daily_limit: 1 SOL                                         │
 │  ├── total_limit: 10 SOL                                        │
-│  └── expires_at: 2026-02-15                                     │
+│  ├── expires_at: 2026-02-15                                     │
+│  └── token_limits:                                              │
+│       └── USDC: 5/tx, 50/day, 500 total                        │
 │                                                                 │
 │  Even if jailbroken, agent CANNOT exceed these limits.          │
 └─────────────────────────────────────────────────────────────────┘
@@ -82,6 +87,7 @@ Private Agent Creation:
 | Frontend | Next.js 16, React 19, TypeScript |
 | Backend | Express.js (Relayer) |
 | AI Integration | MCP (Model Context Protocol) |
+| Token Support | USDC |
 | x402 Payments | Native support |
 
 ### Program IDs (Devnet)
@@ -117,6 +123,11 @@ ZK Verifier:     G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F
 - Real-time spending visibility
 - One-click freeze
 
+### 5. USDC Token Support
+- USDC with per-token spending constraints
+- Same on-chain enforcement as SOL
+- Token balance visibility in dashboard
+
 ---
 
 ## Quick Start
@@ -137,6 +148,8 @@ ZK Verifier:     G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F
 }
 ```
 
+The agent can pay in SOL or USDC - pass `token: "USDC"` to `cloak_pay`.
+
 ### For Developers (SDK)
 
 ```bash
@@ -153,6 +166,13 @@ const agent = new CloakedAgent(agentKey, rpcUrl);
 await agent.spend({
   destination: recipientPubkey,
   amount: 100_000_000  // 0.1 SOL
+});
+
+// Spend USDC (requires token enabled on agent)
+await agent.spendToken({
+  destination: recipientPubkey,
+  mint: USDC_MINT,
+  amount: 5_000_000  // 5 USDC (6 decimals)
 });
 ```
 

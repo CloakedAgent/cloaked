@@ -8,6 +8,15 @@ import {
   SystemProgram,
 } from "@solana/web3.js";
 import { expect } from "chai";
+import {
+  createMint,
+  createAssociatedTokenAccount,
+  mintTo,
+  getAccount,
+  getAssociatedTokenAddressSync,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 
 describe("cloaked", () => {
   const provider = anchor.AnchorProvider.env();
@@ -742,6 +751,22 @@ describe("cloaked", () => {
     });
   });
 
+  // Helper to create a test SPL token mint (USDC-like, 6 decimals)
+  async function createTestMint(
+    connection: anchor.web3.Connection,
+    payer: Keypair
+  ): Promise<{ mint: PublicKey; mintAuthority: Keypair }> {
+    const mintAuthority = payer;
+    const mint = await createMint(
+      connection,
+      payer,
+      mintAuthority.publicKey,
+      null,
+      6
+    );
+    return { mint, mintAuthority };
+  }
+
   describe("constraint edge cases", () => {
     let owner: Keypair;
     let delegateKeypair: Keypair;
@@ -933,6 +958,961 @@ describe("cloaked", () => {
 
       const state = await program.account.cloakedAgentState.fetch(agentStatePda);
       expect(state.totalSpent.toNumber()).to.equal(1.5 * LAMPORTS_PER_SOL);
+    });
+  });
+
+  // ======================================================================
+  // TOKEN INSTRUCTION TESTS
+  // ======================================================================
+
+  describe("enable_token", () => {
+    let owner: Keypair;
+    let delegateKeypair: Keypair;
+    let agentStatePda: PublicKey;
+    let vaultPda: PublicKey;
+
+    beforeEach(async () => {
+      owner = Keypair.generate();
+      delegateKeypair = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(
+        owner.publicKey,
+        5 * LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+    });
+
+    it("enables a token and creates ATA", async () => {
+      // Create agent
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Create test mint
+      const { mint } = await createTestMint(provider.connection, owner);
+
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      const maxPerTx = 1_000_000;
+      const dailyLimit = 10_000_000;
+      const totalLimit = 100_000_000;
+
+      await program.methods
+        .enableToken(
+          new anchor.BN(maxPerTx),
+          new anchor.BN(dailyLimit),
+          new anchor.BN(totalLimit),
+        )
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Verify TokenVaultState
+      const tokenState = await program.account.tokenVaultState.fetch(tokenVaultStatePda);
+      expect(tokenState.agentState.toBase58()).to.equal(agentStatePda.toBase58());
+      expect(tokenState.mint.toBase58()).to.equal(mint.toBase58());
+      expect(tokenState.maxPerTx.toNumber()).to.equal(maxPerTx);
+      expect(tokenState.dailyLimit.toNumber()).to.equal(dailyLimit);
+      expect(tokenState.totalLimit.toNumber()).to.equal(totalLimit);
+      expect(tokenState.totalSpent.toNumber()).to.equal(0);
+      expect(tokenState.dailySpent.toNumber()).to.equal(0);
+
+      // Verify ATA exists and is owned by vault PDA
+      const ataAccount = await getAccount(provider.connection, vaultAta);
+      expect(ataAccount.owner.toBase58()).to.equal(vaultPda.toBase58());
+      expect(Number(ataAccount.amount)).to.equal(0);
+    });
+
+    it("fails if not owner", async () => {
+      const nonOwner = Keypair.generate();
+      const sig2 = await provider.connection.requestAirdrop(nonOwner.publicKey, 2 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig2);
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      try {
+        await program.methods
+          .enableToken(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            mint: mint,
+            owner: nonOwner.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([nonOwner])
+          .rpc();
+        expect.fail("Should have failed with NotOwner");
+      } catch (error: any) {
+        expect(error.message).to.include("NotOwner");
+      }
+    });
+
+    it("fails if private mode", async () => {
+      // Create a private mode agent
+      const dummyCommitment = Array(32).fill(1) as number[];
+      await program.methods
+        .createCloakedAgentPrivate(
+          dummyCommitment,
+          new anchor.BN(0),
+          new anchor.BN(0),
+          new anchor.BN(0),
+          new anchor.BN(0),
+        )
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      try {
+        await program.methods
+          .enableToken(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            mint: mint,
+            owner: owner.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([owner])
+          .rpc();
+        expect.fail("Should have failed with IsPrivateMode");
+      } catch (error: any) {
+        expect(error.message).to.include("IsPrivateMode");
+      }
+    });
+  });
+
+  describe("spend_token", () => {
+    let owner: Keypair;
+    let delegateKeypair: Keypair;
+    let feePayer: Keypair;
+    let agentStatePda: PublicKey;
+    let vaultPda: PublicKey;
+    let mint: PublicKey;
+    let mintAuthority: Keypair;
+    let tokenVaultStatePda: PublicKey;
+    let vaultAta: PublicKey;
+    let destinationWallet: Keypair;
+
+    async function setupTokenAgent(opts: {
+      maxPerTx?: number;
+      dailyLimit?: number;
+      totalLimit?: number;
+      mintAmount?: number;
+      depositSol?: number;
+    } = {}) {
+      const {
+        maxPerTx = 0,
+        dailyLimit = 0,
+        totalLimit = 0,
+        mintAmount = 100_000_000, // 100 USDC
+        depositSol = 0.1,
+      } = opts;
+
+      owner = Keypair.generate();
+      delegateKeypair = Keypair.generate();
+      feePayer = Keypair.generate();
+      destinationWallet = Keypair.generate();
+
+      const sig1 = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig1);
+      const sig2 = await provider.connection.requestAirdrop(feePayer.publicKey, 1 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig2);
+
+      [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      // Create agent
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Deposit SOL for fee reimbursement
+      await program.methods
+        .deposit(new anchor.BN(depositSol * LAMPORTS_PER_SOL))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          depositor: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Create mint
+      const result = await createTestMint(provider.connection, owner);
+      mint = result.mint;
+      mintAuthority = result.mintAuthority;
+
+      [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      // Enable token with constraints
+      await program.methods
+        .enableToken(
+          new anchor.BN(maxPerTx),
+          new anchor.BN(dailyLimit),
+          new anchor.BN(totalLimit),
+        )
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Mint tokens to vault ATA
+      if (mintAmount > 0) {
+        await mintTo(
+          provider.connection,
+          owner,
+          mint,
+          vaultAta,
+          mintAuthority,
+          mintAmount,
+        );
+      }
+    }
+
+    it("transfers tokens and reimburses fee payer", async () => {
+      await setupTokenAgent();
+
+      // Create destination ATA
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      const feePayerBefore = await provider.connection.getBalance(feePayer.publicKey);
+      const spendAmount = 5_000_000; // 5 USDC
+
+      await program.methods
+        .spendToken(new anchor.BN(spendAmount))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          delegate: delegateKeypair.publicKey,
+          feePayer: feePayer.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([delegateKeypair, feePayer])
+        .rpc();
+
+      // Verify destination received tokens
+      const destAccount = await getAccount(provider.connection, destAta);
+      expect(Number(destAccount.amount)).to.equal(spendAmount);
+
+      // Verify fee payer received SPEND_FEE_REIMBURSEMENT
+      const feePayerAfter = await provider.connection.getBalance(feePayer.publicKey);
+      // Fee payer pays tx fee but gets 10_000 reimbursement, net should be positive
+      expect(feePayerAfter - feePayerBefore + 5000).to.be.greaterThan(0); // ~5k tx fee, 10k reimbursement
+
+      // Verify token_vault_state tracking updated
+      const tokenState = await program.account.tokenVaultState.fetch(tokenVaultStatePda);
+      expect(tokenState.dailySpent.toNumber()).to.equal(spendAmount);
+      expect(tokenState.totalSpent.toNumber()).to.equal(spendAmount);
+    });
+
+    it("enforces per-tx limit", async () => {
+      await setupTokenAgent({ maxPerTx: 1_000_000 }); // 1 USDC limit
+
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      try {
+        await program.methods
+          .spendToken(new anchor.BN(2_000_000)) // 2 USDC, exceeds 1 USDC limit
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            destinationTokenAccount: destAta,
+            mint: mint,
+            delegate: delegateKeypair.publicKey,
+            feePayer: feePayer.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([delegateKeypair, feePayer])
+          .rpc();
+        expect.fail("Should have failed with ExceedsPerTxLimit");
+      } catch (error: any) {
+        expect(error.message).to.include("ExceedsPerTxLimit");
+      }
+    });
+
+    it("enforces daily limit", async () => {
+      await setupTokenAgent({ dailyLimit: 5_000_000 }); // 5 USDC daily
+
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      // First spend: 3 USDC - should succeed
+      await program.methods
+        .spendToken(new anchor.BN(3_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          delegate: delegateKeypair.publicKey,
+          feePayer: feePayer.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([delegateKeypair, feePayer])
+        .rpc();
+
+      // Second spend: 3 USDC - should fail (3+3=6 > 5 daily)
+      try {
+        await program.methods
+          .spendToken(new anchor.BN(3_000_000))
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            destinationTokenAccount: destAta,
+            mint: mint,
+            delegate: delegateKeypair.publicKey,
+            feePayer: feePayer.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([delegateKeypair, feePayer])
+          .rpc();
+        expect.fail("Should have failed with ExceedsDailyLimit");
+      } catch (error: any) {
+        expect(error.message).to.include("ExceedsDailyLimit");
+      }
+    });
+
+    it("enforces total limit", async () => {
+      await setupTokenAgent({ totalLimit: 10_000_000, depositSol: 0.5 }); // 10 USDC total
+
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      // Spend 10 USDC (exactly at limit) - should succeed
+      await program.methods
+        .spendToken(new anchor.BN(10_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          delegate: delegateKeypair.publicKey,
+          feePayer: feePayer.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([delegateKeypair, feePayer])
+        .rpc();
+
+      // One more: 1 USDC - should fail (total would be 11 > 10)
+      try {
+        await program.methods
+          .spendToken(new anchor.BN(1_000_000))
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            destinationTokenAccount: destAta,
+            mint: mint,
+            delegate: delegateKeypair.publicKey,
+            feePayer: feePayer.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([delegateKeypair, feePayer])
+          .rpc();
+        expect.fail("Should have failed with ExceedsTotalLimit");
+      } catch (error: any) {
+        expect(error.message).to.include("ExceedsTotalLimit");
+      }
+    });
+
+    it("respects global frozen state", async () => {
+      await setupTokenAgent();
+
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      // Freeze the agent
+      await program.methods
+        .freeze()
+        .accounts({ cloakedAgentState: agentStatePda, owner: owner.publicKey })
+        .signers([owner])
+        .rpc();
+
+      try {
+        await program.methods
+          .spendToken(new anchor.BN(1_000_000))
+          .accounts({
+            cloakedAgentState: agentStatePda,
+            tokenVaultState: tokenVaultStatePda,
+            vault: vaultPda,
+            vaultTokenAccount: vaultAta,
+            destinationTokenAccount: destAta,
+            mint: mint,
+            delegate: delegateKeypair.publicKey,
+            feePayer: feePayer.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([delegateKeypair, feePayer])
+          .rpc();
+        expect.fail("Should have failed with AgentFrozen");
+      } catch (error: any) {
+        expect(error.message).to.include("AgentFrozen");
+      }
+    });
+  });
+
+  describe("withdraw_token", () => {
+    it("owner can withdraw tokens", async () => {
+      const owner = Keypair.generate();
+      const delegateKeypair = Keypair.generate();
+      const destinationWallet = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint, mintAuthority } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      await program.methods
+        .enableToken(new anchor.BN(1_000_000), new anchor.BN(5_000_000), new anchor.BN(10_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Mint 50 USDC to vault
+      await mintTo(provider.connection, owner, mint, vaultAta, mintAuthority, 50_000_000);
+
+      // Create destination ATA
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      const withdrawAmount = 30_000_000; // 30 USDC
+
+      await program.methods
+        .withdrawToken(new anchor.BN(withdrawAmount))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([owner])
+        .rpc();
+
+      const destAccount = await getAccount(provider.connection, destAta);
+      expect(Number(destAccount.amount)).to.equal(withdrawAmount);
+
+      // Vault should have remaining
+      const vaultAccount = await getAccount(provider.connection, vaultAta);
+      expect(Number(vaultAccount.amount)).to.equal(50_000_000 - withdrawAmount);
+    });
+
+    it("owner bypasses per-token constraints", async () => {
+      const owner = Keypair.generate();
+      const delegateKeypair = Keypair.generate();
+      const destinationWallet = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint, mintAuthority } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      // Enable with small maxPerTx of 1 USDC
+      await program.methods
+        .enableToken(new anchor.BN(1_000_000), new anchor.BN(5_000_000), new anchor.BN(10_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      await mintTo(provider.connection, owner, mint, vaultAta, mintAuthority, 50_000_000);
+
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      // Owner withdraws 20 USDC - well above the 1 USDC maxPerTx
+      const withdrawAmount = 20_000_000;
+
+      await program.methods
+        .withdrawToken(new anchor.BN(withdrawAmount))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([owner])
+        .rpc();
+
+      const destAccount = await getAccount(provider.connection, destAta);
+      expect(Number(destAccount.amount)).to.equal(withdrawAmount);
+    });
+  });
+
+  describe("update_token_constraints", () => {
+    it("owner can update token constraints", async () => {
+      const owner = Keypair.generate();
+      const delegateKeypair = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      // Enable with initial constraints
+      await program.methods
+        .enableToken(new anchor.BN(1_000_000), new anchor.BN(5_000_000), new anchor.BN(50_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Update all constraints
+      await program.methods
+        .updateTokenConstraints(
+          new anchor.BN(2_000_000),
+          new anchor.BN(10_000_000),
+          new anchor.BN(100_000_000),
+        )
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          mint: mint,
+          owner: owner.publicKey,
+        })
+        .signers([owner])
+        .rpc();
+
+      const tokenState = await program.account.tokenVaultState.fetch(tokenVaultStatePda);
+      expect(tokenState.maxPerTx.toNumber()).to.equal(2_000_000);
+      expect(tokenState.dailyLimit.toNumber()).to.equal(10_000_000);
+      expect(tokenState.totalLimit.toNumber()).to.equal(100_000_000);
+    });
+
+    it("partial update preserves other fields", async () => {
+      const owner = Keypair.generate();
+      const delegateKeypair = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      await program.methods
+        .enableToken(new anchor.BN(1_000_000), new anchor.BN(5_000_000), new anchor.BN(50_000_000))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Update only dailyLimit, pass null for the others
+      await program.methods
+        .updateTokenConstraints(
+          null,
+          new anchor.BN(20_000_000),
+          null,
+        )
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          mint: mint,
+          owner: owner.publicKey,
+        })
+        .signers([owner])
+        .rpc();
+
+      const tokenState = await program.account.tokenVaultState.fetch(tokenVaultStatePda);
+      expect(tokenState.maxPerTx.toNumber()).to.equal(1_000_000); // unchanged
+      expect(tokenState.dailyLimit.toNumber()).to.equal(20_000_000); // updated
+      expect(tokenState.totalLimit.toNumber()).to.equal(50_000_000); // unchanged
+    });
+  });
+
+  describe("disable_token", () => {
+    it("disables token, returns remaining tokens and closes accounts", async () => {
+      const owner = Keypair.generate();
+      const delegateKeypair = Keypair.generate();
+      const destinationWallet = Keypair.generate();
+
+      const sig = await provider.connection.requestAirdrop(owner.publicKey, 5 * LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegateKeypair.publicKey.toBuffer()],
+        program.programId
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .createCloakedAgent(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          vault: vaultPda,
+          owner: owner.publicKey,
+          delegate: delegateKeypair.publicKey,
+          payer: owner.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      const { mint, mintAuthority } = await createTestMint(provider.connection, owner);
+      const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+        program.programId
+      );
+      const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+      await program.methods
+        .enableToken(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Mint 25 USDC to vault
+      await mintTo(provider.connection, owner, mint, vaultAta, mintAuthority, 25_000_000);
+
+      // Create destination ATA for remaining tokens
+      const destAta = await createAssociatedTokenAccount(
+        provider.connection,
+        owner,
+        mint,
+        destinationWallet.publicKey,
+      );
+
+      // Disable token
+      await program.methods
+        .disableToken()
+        .accounts({
+          cloakedAgentState: agentStatePda,
+          tokenVaultState: tokenVaultStatePda,
+          vault: vaultPda,
+          vaultTokenAccount: vaultAta,
+          destinationTokenAccount: destAta,
+          mint: mint,
+          owner: owner.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([owner])
+        .rpc();
+
+      // Verify destination received all remaining tokens
+      const destAccount = await getAccount(provider.connection, destAta);
+      expect(Number(destAccount.amount)).to.equal(25_000_000);
+
+      // Verify TokenVaultState account is closed
+      const tokenStateInfo = await provider.connection.getAccountInfo(tokenVaultStatePda);
+      expect(tokenStateInfo).to.be.null;
+
+      // Verify vault ATA is closed
+      const vaultAtaInfo = await provider.connection.getAccountInfo(vaultAta);
+      expect(vaultAtaInfo).to.be.null;
     });
   });
 });

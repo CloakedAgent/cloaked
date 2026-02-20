@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { useAgentToken, useSigner, useHydrated } from "@/hooks";
+import { useAgentToken, useAgentTokenVaults, useSigner, useHydrated } from "@/hooks";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { CloakedAgent, CLOAKED_PROGRAM_ID, initProver, isProverReady } from "@cloakedagent/sdk";
 import {
   GlassCard,
@@ -23,6 +24,8 @@ import {
   AgentDetailsConfig,
   TransactionList,
   CloseAgentModal,
+  TokenSection,
+  EnableTokenModal,
 } from "@/components/dashboard";
 import { usePrivateMaster } from "@/contexts/PrivateMasterContext";
 import { useAgentNames } from "@/contexts/AgentNamesContext";
@@ -83,6 +86,25 @@ export default function AgentDetailPage() {
   const [editedName, setEditedName] = useState("");
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [isEnableTokenModalOpen, setIsEnableTokenModalOpen] = useState(false);
+
+  // Derive PDA early for token vaults hook
+  const agentStatePdaAddress = useMemo(() => {
+    if (!delegateId) return null;
+    try {
+      const delegatePubkey = new PublicKey(delegateId);
+      const [agentStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("cloaked_agent_state"), delegatePubkey.toBuffer()],
+        PROGRAM_ID
+      );
+      return agentStatePda.toBase58();
+    } catch {
+      return null;
+    }
+  }, [delegateId]);
+
+  // Token vaults
+  const { tokens: tokenVaults, loading: tokenVaultsLoading, refresh: refreshTokenVaults } = useAgentTokenVaults(agentStatePdaAddress);
 
   // Private agent ownership state
   const [privateOwnerNonce, setPrivateOwnerNonce] = useState<number | null>(null);
@@ -225,6 +247,66 @@ export default function AgentDetailPage() {
     }
   }, [signer, agent?.isPrivate, getTokenForOwner, router]);
 
+  const handleEnableToken = useCallback(async (mint: PublicKey, constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+  }) => {
+    setActionError(null);
+    try {
+      const token = await getTokenForOwner();
+      if (agent?.isPrivate) {
+        await token.enableTokenPrivate(mint, constraints);
+      } else {
+        if (!signer) return;
+        await token.enableToken(signer, mint, constraints);
+      }
+      refreshTokenVaults();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to enable token");
+      throw err;
+    }
+  }, [signer, agent?.isPrivate, getTokenForOwner, refreshTokenVaults]);
+
+  const handleDisableToken = useCallback(async (mint: PublicKey) => {
+    setActionError(null);
+    try {
+      const token = await getTokenForOwner();
+      if (agent?.isPrivate) {
+        if (!publicKey) throw new Error("Wallet required to derive token destination");
+        const destinationAta = getAssociatedTokenAddressSync(mint, publicKey, false);
+        await token.disableTokenPrivate(mint, destinationAta);
+      } else {
+        if (!signer || !publicKey) return;
+        await token.disableToken(signer, mint, publicKey);
+      }
+      refreshTokenVaults();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to disable token");
+    }
+  }, [signer, publicKey, agent?.isPrivate, getTokenForOwner, refreshTokenVaults]);
+
+  const handleUpdateTokenConstraints = useCallback(async (mint: PublicKey, constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+  }) => {
+    setActionError(null);
+    try {
+      const token = await getTokenForOwner();
+      if (agent?.isPrivate) {
+        await token.updateTokenConstraintsPrivate(mint, constraints);
+      } else {
+        if (!signer) return;
+        await token.updateTokenConstraints(signer, mint, constraints);
+      }
+      refreshTokenVaults();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update token constraints");
+      throw err;
+    }
+  }, [signer, agent?.isPrivate, getTokenForOwner, refreshTokenVaults]);
+
   const vaultAddress = useMemo(() => {
     if (!delegateId) return null;
     try {
@@ -238,20 +320,6 @@ export default function AgentDetailPage() {
         PROGRAM_ID
       );
       return vaultPda.toBase58();
-    } catch {
-      return null;
-    }
-  }, [delegateId]);
-
-  const agentStatePdaAddress = useMemo(() => {
-    if (!delegateId) return null;
-    try {
-      const delegatePubkey = new PublicKey(delegateId);
-      const [agentStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("cloaked_agent_state"), delegatePubkey.toBuffer()],
-        PROGRAM_ID
-      );
-      return agentStatePda.toBase58();
     } catch {
       return null;
     }
@@ -458,6 +526,7 @@ export default function AgentDetailPage() {
           vaultBalance={agent.balance}
           isPrivate={agent.isPrivate}
           connectedWallet={publicKey}
+          enabledTokens={tokenVaults}
         />
       )}
 
@@ -623,6 +692,30 @@ export default function AgentDetailPage() {
           />
         </div>
       )}
+
+      {/* Token Vaults */}
+      {isOwner && (
+        <div className="mb-8 animate-reveal animate-reveal-delay-3">
+          <TokenSection
+            tokens={tokenVaults}
+            loading={tokenVaultsLoading}
+            isOwner={isOwner}
+            isPrivate={agent.isPrivate}
+            onEnableToken={() => setIsEnableTokenModalOpen(true)}
+            onDisableToken={handleDisableToken}
+            onUpdateConstraints={handleUpdateTokenConstraints}
+          />
+        </div>
+      )}
+
+      {/* Enable Token Modal */}
+      <EnableTokenModal
+        isOpen={isEnableTokenModalOpen}
+        onClose={() => setIsEnableTokenModalOpen(false)}
+        onEnable={handleEnableToken}
+        enabledMints={tokenVaults.map((t) => t.mint.toBase58())}
+        isPrivate={agent.isPrivate}
+      />
 
       {/* Funding Cards (owner only) */}
       {isOwner && (

@@ -58,7 +58,7 @@ x402 is ideal for AI agents that need to access many different services without 
 
 1. **Agent requests resource** - normal HTTP request
 2. **Server returns 402** - with `X-PAYMENT-REQUIRED` header containing payment details (recipient, amount)
-3. **Agent pays** - Cloaked sends SOL to the specified address
+3. **Agent pays** - Cloaked sends SOL or USDC to the specified address
 4. **Agent retries** - same request with `X-PAYMENT` header containing the transaction signature
 5. **Server verifies** - checks payment on-chain, returns content
 
@@ -115,7 +115,7 @@ When a server returns 402, it includes this header with base64-encoded JSON:
 |-------|-------------|
 | `payTo` | Solana address to pay (base58) |
 | `amount` | Amount in lamports (string) |
-| `currency` | Always "SOL" for Solana |
+| `currency` | `"SOL"` or `"USDC"` |
 | `network` | "solana-mainnet" or "solana-devnet" |
 
 ### X-PAYMENT Header

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import { Button, Input } from "@/components/ui";
+import { TokenVaultInfo } from "@/hooks";
 
 type Mode = "select" | "generated" | "custom";
 
@@ -14,6 +15,7 @@ interface CloseAgentModalProps {
   vaultBalance: number;
   isPrivate: boolean;
   connectedWallet: PublicKey;
+  enabledTokens?: TokenVaultInfo[];
 }
 
 export function CloseAgentModal({
@@ -23,6 +25,7 @@ export function CloseAgentModal({
   vaultBalance,
   isPrivate,
   connectedWallet,
+  enabledTokens = [],
 }: CloseAgentModalProps) {
   const [mode, setMode] = useState<Mode>("select");
   const [generatedKeypair, setGeneratedKeypair] = useState<Keypair | null>(null);
@@ -166,6 +169,25 @@ export function CloseAgentModal({
           </div>
         </div>
 
+        {/* Token Warning */}
+        {enabledTokens.length > 0 && (
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 mb-6">
+            <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            <div className="text-sm">
+              <p className="text-red-200 font-medium mb-1">
+                Disable all tokens before closing
+              </p>
+              <p className="text-red-300/70 text-xs">
+                This agent has {enabledTokens.length} enabled token{enabledTokens.length !== 1 ? "s" : ""}:{" "}
+                {enabledTokens.map((t) => t.symbol).join(", ")}.
+                Disable them from the Token Vaults section first.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Error Display */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 mb-6">
@@ -192,7 +214,7 @@ export function CloseAgentModal({
               <Button variant="secondary" onClick={handleClose} disabled={isClosing} fullWidth>
                 Cancel
               </Button>
-              <Button variant="danger" onClick={handleConfirm} loading={isClosing} fullWidth>
+              <Button variant="danger" onClick={handleConfirm} loading={isClosing} disabled={enabledTokens.length > 0} fullWidth>
                 Close Agent
               </Button>
             </div>

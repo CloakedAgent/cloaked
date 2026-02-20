@@ -15,6 +15,9 @@ export {
   updateConstraintsPrivateViaRelayer,
   withdrawPrivateViaRelayer,
   closePrivateViaRelayer,
+  enableTokenPrivateViaRelayer,
+  updateTokenConstraintsPrivateViaRelayer,
+  disableTokenPrivateViaRelayer,
   type CreatePrivateViaRelayerOptions,
   type CreatePrivateViaRelayerResult,
   type RelayerStatus,
@@ -22,6 +25,9 @@ export {
   type UpdateConstraintsPrivateParams,
   type WithdrawPrivateParams,
   type ClosePrivateParams,
+  type EnableTokenPrivateParams,
+  type UpdateTokenConstraintsPrivateParams,
+  type DisableTokenPrivateParams,
 } from "./relayer";
 
 // ZK Privacy module

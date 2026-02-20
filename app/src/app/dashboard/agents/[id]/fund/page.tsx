@@ -5,12 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import Link from "next/link";
-import { useAgentToken, useSigner, useHydrated } from "@/hooks";
+import { useAgentToken, useAgentTokenVaults, useSigner, useHydrated, TokenVaultInfo } from "@/hooks";
 import { CloakedAgent, CLOAKED_PROGRAM_ID } from "@cloakedagent/sdk";
 import { usePrivacyCash } from "@/contexts/PrivacyCashContext";
 import { useAgentNames } from "@/contexts/AgentNamesContext";
 import { GlassCard, Button, Input, Skeleton, useWalletReady, ConnectWalletPrompt, DemoTipbox } from "@/components";
-import { formatSol } from "@/lib/cloaked";
+import { formatSol, formatToken } from "@/lib/cloaked";
 import { NETWORK, PRIVACY_CASH_DEMO } from "@/lib/constants";
 
 type FundMode = "wallet" | "private";
@@ -40,29 +40,34 @@ export default function AgentFundPage() {
   } = usePrivacyCash();
 
   const [fundMode, setFundMode] = useState<FundMode>("wallet");
+  const [selectedAsset, setSelectedAsset] = useState<"SOL" | string>("SOL");
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<FundStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
 
-  // Derive vault address
-  const vaultAddress = useMemo(() => {
-    if (!delegateId) return null;
+  // Derive vault and agent state addresses
+  const { vaultAddress, agentStatePda } = useMemo(() => {
+    if (!delegateId) return { vaultAddress: null, agentStatePda: null };
     try {
       const delegatePubkey = new PublicKey(delegateId);
-      const [agentStatePda] = PublicKey.findProgramAddressSync(
+      const [statePda] = PublicKey.findProgramAddressSync(
         [Buffer.from("cloaked_agent_state"), delegatePubkey.toBuffer()],
         CLOAKED_PROGRAM_ID
       );
       const [vaultPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), agentStatePda.toBuffer()],
+        [Buffer.from("vault"), statePda.toBuffer()],
         CLOAKED_PROGRAM_ID
       );
-      return vaultPda;
+      return { vaultAddress: vaultPda, agentStatePda: statePda.toBase58() };
     } catch {
-      return null;
+      return { vaultAddress: null, agentStatePda: null };
     }
   }, [delegateId]);
+
+  // Token vaults for this agent
+  const { tokens: tokenVaults } = useAgentTokenVaults(agentStatePda);
+  const selectedTokenVault = tokenVaults.find((t) => t.mint.toBase58() === selectedAsset);
 
   // Get display name from context
   const displayName = useMemo(() => {
@@ -400,7 +405,7 @@ export default function AgentFundPage() {
         <GlassCard className="animate-reveal animate-reveal-delay-2">
           <h3 className="font-semibold mb-3">Alternative: Direct Transfer</h3>
           <p className="text-sm text-[var(--cloak-text-muted)] mb-4">
-            Send SOL directly to the vault address from anywhere - exchanges, other wallets, or{" "}
+            Send assets directly to the deposit address from anywhere - exchanges, other wallets, or{" "}
             <a
               href={PRIVACY_CASH_DEMO.PRIVACY_CASH_URL}
               target="_blank"
@@ -412,9 +417,38 @@ export default function AgentFundPage() {
             .
           </p>
 
-          {vaultAddress && (
+          {/* Asset selector for deposit addresses */}
+          {tokenVaults.length > 0 && (
+            <div className="flex gap-1 mb-4 p-1 bg-[var(--cloak-surface)] rounded-lg w-fit">
+              <button
+                onClick={() => setSelectedAsset("SOL")}
+                className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-all ${
+                  selectedAsset === "SOL"
+                    ? "bg-[var(--cloak-violet)] text-white"
+                    : "text-[var(--cloak-text-muted)] hover:text-[var(--cloak-text-primary)]"
+                }`}
+              >
+                SOL
+              </button>
+              {tokenVaults.map((t) => (
+                <button
+                  key={t.mint.toBase58()}
+                  onClick={() => setSelectedAsset(t.mint.toBase58())}
+                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-all ${
+                    selectedAsset === t.mint.toBase58()
+                      ? "bg-[var(--cloak-violet)] text-white"
+                      : "text-[var(--cloak-text-muted)] hover:text-[var(--cloak-text-primary)]"
+                  }`}
+                >
+                  {t.symbol}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {selectedAsset === "SOL" && vaultAddress && (
             <div className="bg-[var(--cloak-surface)] rounded-lg p-4">
-              <div className="text-xs text-[var(--cloak-text-muted)] mb-2">Vault Address</div>
+              <div className="text-xs text-[var(--cloak-text-muted)] mb-2">SOL Vault Address</div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-sm font-mono text-[var(--cloak-cyan)] break-all">
                   {vaultAddress.toBase58()}
@@ -437,8 +471,34 @@ export default function AgentFundPage() {
             </div>
           )}
 
+          {selectedTokenVault && (
+            <div className="bg-[var(--cloak-surface)] rounded-lg p-4">
+              <div className="text-xs text-[var(--cloak-text-muted)] mb-2">
+                {selectedTokenVault.symbol} Deposit Address (ATA)
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-sm font-mono text-[#60a5fa] break-all">
+                  {selectedTokenVault.depositAddress.toBase58()}
+                </code>
+                <button
+                  onClick={() => navigator.clipboard.writeText(selectedTokenVault.depositAddress.toBase58())}
+                  className="text-[var(--cloak-text-muted)] hover:text-[#60a5fa] transition-colors flex-shrink-0"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="text-[10px] text-zinc-500 mt-2">
+                Current balance: {formatToken(selectedTokenVault.balance, selectedTokenVault.decimals, selectedTokenVault.symbol)}
+              </div>
+            </div>
+          )}
+
           <p className="text-xs text-[var(--cloak-text-dim)] mt-4">
-            ⚠️ Only send SOL to this address. Other tokens will be lost.
+            {selectedAsset === "SOL"
+              ? "Only send SOL to the vault address above."
+              : `Send ${selectedTokenVault?.symbol ?? "tokens"} to the ATA address above. The token must be enabled first.`}
           </p>
         </GlassCard>
       </div>

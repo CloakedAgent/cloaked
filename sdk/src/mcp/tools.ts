@@ -2,8 +2,10 @@
 
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { CloakedAgent } from "../agent";
+import { KNOWN_TOKENS } from "../constants";
 import {
   BalanceResponse,
+  TokenBalanceInfo,
   StatusResponse,
   PayResponse,
   X402FetchResponse,
@@ -83,6 +85,29 @@ export async function handleBalance(agentKey?: string): Promise<BalanceResponse>
       expiresInDays = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
     }
 
+    // Fetch enabled token states
+    const tokens: TokenBalanceInfo[] = [];
+    try {
+      const enabledTokens = await agent.getEnabledTokens();
+      for (const t of enabledTokens) {
+        const decimals = t.decimals || 6;
+        tokens.push({
+          symbol: t.symbol,
+          mint: t.mint.toBase58(),
+          balance: t.balance,
+          balance_units: t.balance / Math.pow(10, decimals),
+          daily_spent: t.spending.dailySpent,
+          daily_limit: t.constraints.dailyLimit,
+          daily_remaining: t.spending.dailyRemaining,
+          total_spent: t.spending.totalSpent,
+          total_limit: t.constraints.totalLimit,
+          total_remaining: t.spending.totalRemaining,
+        });
+      }
+    } catch {
+      // Token query failures shouldn't break balance check
+    }
+
     return {
       balance_sol: state.balance / LAMPORTS_PER_SOL,
       balance_lamports: state.balance,
@@ -95,6 +120,7 @@ export async function handleBalance(agentKey?: string): Promise<BalanceResponse>
       expires_in_days: expiresInDays,
       frozen: state.constraints.frozen,
       status: state.status,
+      tokens,
     };
   } catch (error: unknown) {
     throw new Error(`Failed to get balance: ${sanitizeErrorMessage(error)}`);
@@ -153,10 +179,28 @@ export async function handleStatus(agentKey?: string): Promise<StatusResponse> {
  * Tool handler for cloak_pay
  * Pays to a destination address for x402 services
  */
+/**
+ * Resolve a token symbol (e.g., "USDC") to its mint address
+ */
+function resolveMint(token: string): PublicKey | null {
+  for (const [mintStr, info] of Object.entries(KNOWN_TOKENS)) {
+    if (info.symbol.toUpperCase() === token.toUpperCase()) {
+      return new PublicKey(mintStr);
+    }
+  }
+  // Try as raw mint address
+  try {
+    return new PublicKey(token);
+  } catch {
+    return null;
+  }
+}
+
 export async function handlePay(
   destination: string,
   amountSol: number,
-  agentKey?: string
+  agentKey?: string,
+  token?: string
 ): Promise<PayResponse> {
   const key = agentKey || process.env.CLOAKED_AGENT_KEY;
   if (!key) {
@@ -166,9 +210,50 @@ export async function handlePay(
   const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
   const agent = new CloakedAgent(key, rpcUrl);
 
-  const amountLamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
-
   try {
+    if (token) {
+      const mint = resolveMint(token);
+      if (!mint) {
+        return {
+          success: false,
+          signature: "",
+          remaining_balance: 0,
+          daily_remaining: 0,
+          error: `Unknown token: ${token}`,
+        };
+      }
+
+      const tokenState = await agent.getTokenState(mint);
+      if (!tokenState) {
+        return {
+          success: false,
+          signature: "",
+          remaining_balance: 0,
+          daily_remaining: 0,
+          error: `${token} not enabled on this agent`,
+        };
+      }
+
+      // amountSol is actually the human-readable token amount (e.g., 1.5 USDC)
+      const nativeAmount = Math.floor(amountSol * Math.pow(10, tokenState.decimals));
+
+      const result = await agent.spendToken({
+        destination: new PublicKey(destination),
+        mint,
+        amount: nativeAmount,
+      });
+
+      return {
+        success: true,
+        signature: result.signature,
+        remaining_balance: result.remainingBalance,
+        daily_remaining: result.dailyRemaining,
+      };
+    }
+
+    // SOL flow
+    const amountLamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+
     const result = await agent.spend({
       destination: new PublicKey(destination),
       amount: amountLamports,
@@ -325,17 +410,31 @@ export async function handleX402Fetch(
     }
 
     // Step 3: Make payment
-    const amountLamports = parseInt(requirements.amount, 10);
-    if (isNaN(amountLamports) || amountLamports <= 0) {
+    const isUSDC = requirements.currency?.toUpperCase() === "USDC";
+    const rawAmount = parseInt(requirements.amount, 10);
+    if (isNaN(rawAmount) || rawAmount <= 0) {
       return {
         success: false,
         error: "Invalid payment amount in X-PAYMENT-REQUIRED header",
         statusCode: 402,
       };
     }
-    const amountSol = amountLamports / LAMPORTS_PER_SOL;
 
-    const payResult = await handlePay(requirements.payTo, amountSol, key);
+    let payResult: PayResponse;
+    let amountSol: number;
+    let amountLamports: number;
+
+    if (isUSDC) {
+      // USDC: rawAmount is in native units (6 decimals)
+      amountLamports = rawAmount;
+      amountSol = rawAmount / 1_000_000;
+      payResult = await handlePay(requirements.payTo, amountSol, key, "USDC");
+    } else {
+      // SOL: rawAmount is in lamports
+      amountLamports = rawAmount;
+      amountSol = rawAmount / LAMPORTS_PER_SOL;
+      payResult = await handlePay(requirements.payTo, amountSol, key);
+    }
 
     if (!payResult.success) {
       return {

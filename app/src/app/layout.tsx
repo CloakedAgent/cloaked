@@ -5,6 +5,7 @@ import { WalletProvider } from "@/components";
 import { PrivacyCashProvider } from "@/contexts/PrivacyCashContext";
 import { PrivateMasterProvider } from "@/contexts/PrivateMasterContext";
 import { AgentNamesProvider } from "@/contexts/AgentNamesContext";
+import { DisplayCurrencyProvider } from "@/contexts/DisplayCurrencyContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -58,7 +59,9 @@ export default function RootLayout({
           <PrivateMasterProvider>
             <PrivacyCashProvider>
               <AgentNamesProvider>
-                <main>{children}</main>
+                <DisplayCurrencyProvider>
+                  <main>{children}</main>
+                </DisplayCurrencyProvider>
               </AgentNamesProvider>
             </PrivacyCashProvider>
           </PrivateMasterProvider>

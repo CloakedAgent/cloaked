@@ -3,20 +3,24 @@
 import { memo, useMemo, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PublicKey } from "@solana/web3.js";
-import { AgentToken } from "@/hooks";
-import { formatSol } from "@/lib/cloaked";
+import { AgentToken, TokenSummary, TokenVaultWithBalance } from "@/hooks";
+import { formatSol, formatToken } from "@/lib/cloaked";
 import { useAgentNames } from "@/contexts/AgentNamesContext";
 import { CLOAKED_PROGRAM_ID } from "@/lib/constants";
 import { getAgentIconSvg } from "@/lib/agentIcons";
 
 interface AgentGridCardProps {
   agent: AgentToken;
+  enabledTokens?: TokenSummary[];
+  tokenData?: TokenVaultWithBalance;
   onFreeze?: (agent: AgentToken) => Promise<void>;
   onUnfreeze?: (agent: AgentToken) => Promise<void>;
 }
 
 export const AgentGridCard = memo(function AgentGridCard({
   agent,
+  enabledTokens,
+  tokenData,
   onFreeze,
   onUnfreeze,
 }: AgentGridCardProps) {
@@ -57,7 +61,7 @@ export const AgentGridCard = memo(function AgentGridCard({
     return "Active";
   }, [agent.status]);
 
-  // Calculate daily spending percentage
+  // Calculate daily spending percentage (SOL-based)
   const dailyPercentage = useMemo(() => {
     if (agent.constraints.dailyLimit === 0) return 0;
     return Math.min(
@@ -189,9 +193,7 @@ export const AgentGridCard = memo(function AgentGridCard({
           <span className="agent-grid-card-spending-label">Daily Spending</span>
           <span className="agent-grid-card-spending-value">
             {formatSol(agent.spending.dailySpent, 2)}{" "}
-            <span>
-              / {agent.constraints.dailyLimit === 0 ? "∞" : formatSol(agent.constraints.dailyLimit, 0)}
-            </span>
+            <span>/ {agent.constraints.dailyLimit === 0 ? "∞" : formatSol(agent.constraints.dailyLimit, 0)}</span>
           </span>
         </div>
         <div className="dashboard-progress">
@@ -204,10 +206,30 @@ export const AgentGridCard = memo(function AgentGridCard({
 
       <div className="agent-grid-card-balance">
         <span className="agent-grid-card-balance-label">Available Balance</span>
-        <span className="agent-grid-card-balance-value">
-          {formatSol(agent.balance, 2)} SOL
-        </span>
+        <div className="flex flex-col">
+          <span className="agent-grid-card-balance-value">
+            {formatSol(agent.balance, 2)} SOL
+          </span>
+          {tokenData && (
+            <span className="text-[12px] font-mono text-[#60a5fa]">
+              {formatToken(tokenData.balance, tokenData.decimals, tokenData.symbol)}
+            </span>
+          )}
+        </div>
       </div>
+
+      {enabledTokens && enabledTokens.length > 0 && (
+        <div className="flex gap-1.5 mt-2">
+          {enabledTokens.map((t) => (
+            <span
+              key={t.mint}
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-[#2775ca]/15 text-[#60a5fa] border border-[#2775ca]/30"
+            >
+              {t.symbol}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 });

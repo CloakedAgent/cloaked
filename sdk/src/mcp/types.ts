@@ -5,6 +5,19 @@
  */
 
 // Enhanced balance response with constraints
+export interface TokenBalanceInfo {
+  symbol: string;
+  mint: string;
+  balance: number;
+  balance_units: number;
+  daily_spent: number;
+  daily_limit: number;
+  daily_remaining: number;
+  total_spent: number;
+  total_limit: number;
+  total_remaining: number;
+}
+
 export interface BalanceResponse {
   balance_sol: number;
   balance_lamports: number;
@@ -17,6 +30,7 @@ export interface BalanceResponse {
   expires_in_days: number | null;
   frozen: boolean;
   status: string;
+  tokens: TokenBalanceInfo[];
 }
 
 // Status response with health indicator

@@ -205,6 +205,28 @@ export interface ClosePrivateParams extends PrivateOperationParams {
   destination: string;
 }
 
+/** Enable token private parameters */
+export interface EnableTokenPrivateParams extends PrivateOperationParams {
+  mint: string;
+  maxPerTx: number;
+  dailyLimit: number;
+  totalLimit: number;
+}
+
+/** Update token constraints private parameters */
+export interface UpdateTokenConstraintsPrivateParams extends PrivateOperationParams {
+  mint: string;
+  maxPerTx: number | null;
+  dailyLimit: number | null;
+  totalLimit: number | null;
+}
+
+/** Disable token private parameters */
+export interface DisableTokenPrivateParams extends PrivateOperationParams {
+  mint: string;
+  destinationTokenAccount: string;
+}
+
 /**
  * Freeze a private agent via relayer
  */
@@ -253,6 +275,36 @@ export async function closePrivateViaRelayer(
   apiUrl?: string
 ): Promise<string> {
   return postRelayerOperation("close-private", params, apiUrl);
+}
+
+/**
+ * Enable a token for a private agent via relayer
+ */
+export async function enableTokenPrivateViaRelayer(
+  params: EnableTokenPrivateParams,
+  apiUrl?: string
+): Promise<string> {
+  return postRelayerOperation("enable-token-private", params, apiUrl);
+}
+
+/**
+ * Update token constraints for a private agent via relayer
+ */
+export async function updateTokenConstraintsPrivateViaRelayer(
+  params: UpdateTokenConstraintsPrivateParams,
+  apiUrl?: string
+): Promise<string> {
+  return postRelayerOperation("update-token-constraints-private", params, apiUrl);
+}
+
+/**
+ * Disable a token for a private agent via relayer
+ */
+export async function disableTokenPrivateViaRelayer(
+  params: DisableTokenPrivateParams,
+  apiUrl?: string
+): Promise<string> {
+  return postRelayerOperation("disable-token-private", params, apiUrl);
 }
 
 /**

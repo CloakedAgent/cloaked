@@ -8,6 +8,8 @@ import { CloakedAgent, initProver, isProverReady } from "@cloakedagent/sdk";
 import {
   useAgentTokens,
   usePrivateAgents,
+  useAllTokenVaults,
+  useTokenVaultBalances,
   AgentToken,
   useSigner,
   PrivateAgent,
@@ -15,8 +17,10 @@ import {
 } from "@/hooks";
 import { GlassCard, Button, useWalletReady, ConnectWalletPrompt } from "@/components";
 import { StatCard, AgentGridCard } from "@/components/dashboard";
-import { formatSol } from "@/lib/cloaked";
+import { formatSol, formatToken } from "@/lib/cloaked";
 import { usePrivacyCash } from "@/contexts/PrivacyCashContext";
+import { useDisplayCurrency } from "@/contexts/DisplayCurrencyContext";
+import { USDC_MINT_DEVNET } from "@/lib/constants";
 
 export default function DashboardPage() {
   const hydrated = useHydrated();
@@ -33,6 +37,11 @@ export default function DashboardPage() {
     getMasterSecret,
     refresh: refreshPrivate,
   } = usePrivateAgents();
+  const { vaultMap: tokenVaultMap } = useAllTokenVaults();
+  const { globalCurrency, setGlobalCurrency } = useDisplayCurrency();
+  const usdcMint = USDC_MINT_DEVNET.toBase58();
+  const isUsdcMode = globalCurrency !== "SOL";
+  const { balanceMap: usdcBalanceMap, loading: usdcLoading } = useTokenVaultBalances(usdcMint);
   const [proverInitialized, setProverInitialized] = useState(false);
   const { balance: privacyCashBalance, status: privacyCashStatus } = usePrivacyCash();
 
@@ -58,23 +67,32 @@ export default function DashboardPage() {
     return combined;
   }, [tokens, privateAgents, hasMasterSecret]);
 
-  // Calculate stats
+  // Calculate stats — conditional on display mode
   const stats = useMemo(() => {
+    const activeCount = allAgents.filter((a) => a.status === "active").length;
+    const frozenCount = allAgents.filter((a) => a.status === "frozen").length;
+
+    if (isUsdcMode) {
+      let totalBalance = 0;
+      let todaySpending = 0;
+      for (const agent of allAgents) {
+        const tokenData = usdcBalanceMap.get(agent.address.toBase58());
+        if (tokenData) {
+          totalBalance += tokenData.balance;
+          todaySpending += tokenData.dailySpent;
+        }
+      }
+      return { totalBalance, todaySpending, activeCount, frozenCount, isToken: true, decimals: 6, symbol: "USDC" };
+    }
+
     const totalBalance = allAgents.reduce((sum, a) => sum + a.balance, 0);
     const todaySpending = allAgents.reduce(
       (sum, a) => sum + a.spending.dailySpent,
       0
     );
-    const activeCount = allAgents.filter((a) => a.status === "active").length;
-    const frozenCount = allAgents.filter((a) => a.status === "frozen").length;
 
-    return {
-      totalBalance,
-      todaySpending,
-      activeCount,
-      frozenCount,
-    };
-  }, [allAgents]);
+    return { totalBalance, todaySpending, activeCount, frozenCount, isToken: false, decimals: 9, symbol: "SOL" };
+  }, [allAgents, isUsdcMode, usdcBalanceMap]);
 
   // Freeze/unfreeze handlers
   const handleFreeze = useCallback(
@@ -187,7 +205,7 @@ export default function DashboardPage() {
   return (
     <div className="animate-reveal">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[var(--cloak-text-primary)] mb-1">
             Overview
@@ -217,11 +235,37 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {/* Stats currency toggle */}
+      <div className="flex justify-start mb-4">
+        <div className="flex gap-0.5 p-[3px] rounded-lg border border-white/[0.08] bg-black/40">
+          <button
+            onClick={() => setGlobalCurrency("SOL")}
+            className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${
+              !isUsdcMode
+                ? "bg-[#8b5cf6] text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            SOL
+          </button>
+          <button
+            onClick={() => setGlobalCurrency(usdcMint)}
+            className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${
+              isUsdcMode
+                ? "bg-[#8b5cf6] text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            USDC
+          </button>
+        </div>
+      </div>
+
       {/* Stats Grid */}
       <div className="stats-grid">
         <StatCard
           label="Total Balance"
-          value={`${formatSol(stats.totalBalance, 2)} SOL`}
+          value={stats.isToken ? formatToken(stats.totalBalance, stats.decimals, stats.symbol) : `${formatSol(stats.totalBalance, 2)} SOL`}
           icon={
             <svg
               className="w-10 h-10"
@@ -255,7 +299,7 @@ export default function DashboardPage() {
 
         <StatCard
           label="Today's Spending"
-          value={`${formatSol(stats.todaySpending, 2)}`}
+          value={stats.isToken ? formatToken(stats.todaySpending, stats.decimals, stats.symbol) : formatSol(stats.todaySpending, 2)}
           icon={
             <svg
               className="w-10 h-10"
@@ -365,30 +409,28 @@ export default function DashboardPage() {
         <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--cloak-text-dim)]">
           Deployed Agents
         </h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              refresh();
-              if (hasMasterSecret) refreshPrivate();
-            }}
-            className="p-1.5 hover:bg-[var(--cloak-surface)] rounded text-[var(--cloak-text-muted)] hover:text-[var(--cloak-text-primary)] transition-colors"
-            title="Refresh"
+        <button
+          onClick={() => {
+            refresh();
+            if (hasMasterSecret) refreshPrivate();
+          }}
+          className="p-1.5 hover:bg-[var(--cloak-surface)] rounded text-[var(--cloak-text-muted)] hover:text-[var(--cloak-text-primary)] transition-colors"
+          title="Refresh"
+        >
+          <svg
+            className={`w-4 h-4 ${loading || privateLoading ? "animate-spin" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            <svg
-              className={`w-4 h-4 ${loading || privateLoading ? "animate-spin" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          </button>
-        </div>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+        </button>
       </div>
 
       {/* Error State */}
@@ -492,6 +534,8 @@ export default function DashboardPage() {
             <AgentGridCard
               key={agent.delegate.toBase58()}
               agent={agent}
+              enabledTokens={tokenVaultMap.get(agent.address.toBase58())}
+              tokenData={usdcBalanceMap.get(agent.address.toBase58())}
               onFreeze={agent.isPrivate ? handleFreezePrivate : handleFreeze}
               onUnfreeze={
                 agent.isPrivate ? handleUnfreezePrivate : handleUnfreeze

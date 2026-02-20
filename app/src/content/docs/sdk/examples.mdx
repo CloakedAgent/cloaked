@@ -177,3 +177,35 @@ await agent.spend({
 <Callout type="tip">
 Using your own fee payer removes relayer dependency and slightly reduces costs.
 </Callout>
+
+## USDC Payments
+
+Enable and spend USDC with per-token constraints:
+
+```typescript
+import { PublicKey } from "@solana/web3.js";
+
+const USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // devnet
+
+// Owner enables USDC with constraints
+await agent.enableToken(ownerSigner, USDC_MINT, {
+  maxPerTx: 5_000_000,     // 5 USDC per tx
+  dailyLimit: 50_000_000,  // 50 USDC/day
+  totalLimit: 500_000_000, // 500 USDC lifetime
+});
+
+// Agent spends USDC (same as SOL but with mint)
+const result = await agent.spendToken({
+  destination: new PublicKey("HN7cAB..."),
+  mint: USDC_MINT,
+  amount: 5_000_000, // 5 USDC
+});
+
+// Check USDC balance
+const usdcBalance = await agent.getTokenBalance(USDC_MINT);
+console.log(`USDC: ${usdcBalance / 1e6}`);
+```
+
+<Callout type="info">
+USDC uses 6 decimals, so 1 USDC = 1,000,000 native units. Token constraints are tracked separately from SOL.
+</Callout>

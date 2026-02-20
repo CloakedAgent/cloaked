@@ -48,6 +48,13 @@ await agent.spend({
   destination: recipientPubkey,
   amount: 100_000_000 // 0.1 SOL in lamports
 });
+
+// Spend USDC
+await agent.spendToken({
+  destination: recipientPubkey,
+  mint: USDC_MINT,
+  amount: 5_000_000 // 5 USDC
+});
 ```
 
 ## Features
@@ -55,6 +62,7 @@ await agent.spend({
 - **On-chain constraints** - Per-tx, daily, and total limits enforced by Solana program
 - **MCP integration** - Works with Claude and other AI agents via Model Context Protocol
 - **x402 support** - Automatic payment for pay-per-use APIs
+- **USDC support** - Send USDC with per-token spending constraints
 - **Privacy mode** - Optional ZK proofs to hide wallet-agent link
 
 ## API
@@ -74,6 +82,9 @@ agent.agentStatePda  // State account address
 await agent.getBalance()           // Get vault balance in lamports
 await agent.getStatus()            // Get full status with constraints
 await agent.spend({ destination, amount })  // Spend SOL
+await agent.spendToken({ destination, mint, amount }) // Spend USDC
+await agent.getTokenBalance(mint)   // Get token balance
+await agent.enableToken(owner, mint, constraints) // Enable USDC
 ```
 
 ### MCP Tools
@@ -82,7 +93,7 @@ When running as MCP server, provides these tools:
 
 - `cloak_balance` - Check available balance
 - `cloak_status` - Get spending limits and constraints
-- `cloak_pay` - Send SOL to destination
+- `cloak_pay` - Send SOL or USDC to destination
 - `cloak_x402_fetch` - Fetch x402-protected resources with auto-payment
 
 ## License

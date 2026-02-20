@@ -56,8 +56,8 @@ const roadmapData = [
     category: "Expansion",
     icon: Zap,
     relatedIds: [3, 6],
-    status: "in-progress" as const,
-    energy: 50,
+    status: "completed" as const,
+    energy: 100,
   },
   {
     id: 6,

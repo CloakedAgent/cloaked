@@ -51,7 +51,7 @@ const TOOLS = [
   },
   {
     name: "cloak_pay",
-    description: "Pay SOL to a destination address using the Cloaked Agent spending account. Use this for x402 payments or any SOL transfer within the agent's spending limits.",
+    description: "Pay SOL or tokens to a destination address using the Cloaked Agent spending account. Use this for x402 payments or any transfer within the agent's spending limits.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -63,6 +63,10 @@ const TOOLS = [
           type: "number",
           minimum: 0.000001,
           description: "Amount in SOL to pay (e.g., 0.001 for 1 milliSOL, 0.1 for 100 milliSOL)",
+        },
+        token: {
+          type: "string",
+          description: "Token symbol (e.g., \"USDC\") or mint address. If omitted, pays in SOL.",
         },
         agent_key: {
           type: "string",
@@ -315,7 +319,7 @@ function createServer(): Server {
         }
 
         case "cloak_pay": {
-          const payArgs = args as { destination: string; amount: number; agent_key?: string };
+          const payArgs = args as { destination: string; amount: number; token?: string; agent_key?: string };
           if (!payArgs.destination || payArgs.amount === undefined) {
             throw new Error("destination and amount are required");
           }
@@ -326,7 +330,7 @@ function createServer(): Server {
           if (isNaN(amount) || amount <= 0) {
             throw new Error("amount must be a positive number (e.g., 0.001 for 1 milliSOL)");
           }
-          result = await handlePay(payArgs.destination, amount, payArgs.agent_key);
+          result = await handlePay(payArgs.destination, amount, payArgs.agent_key, payArgs.token);
           break;
         }
 

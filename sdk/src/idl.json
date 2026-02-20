@@ -2,7 +2,7 @@
   "address": "3yMjzAeXXc5FZRUrJ1YqP4YMPhPd5bBxHQ6npNSPCUwB",
   "metadata": {
     "name": "cloaked",
-    "version": "0.1.0",
+    "version": "0.8.0",
     "spec": "0.1.0",
     "description": "Cloaked - Trustless spending accounts for AI agents on Solana"
   },
@@ -25,7 +25,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -82,7 +115,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -454,6 +520,975 @@
       ]
     },
     {
+      "name": "disable_token",
+      "docs": [
+        "Disable a token — transfer remaining tokens to owner, close state"
+      ],
+      "discriminator": [
+        188,
+        41,
+        26,
+        25,
+        89,
+        152,
+        42,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Owner's token account to receive remaining tokens"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "disable_token_private",
+      "docs": [
+        "Disable a token with ZK proof (private mode) -- transfer remaining tokens, close ATA + state"
+      ],
+      "discriminator": [
+        81,
+        8,
+        116,
+        87,
+        223,
+        182,
+        185,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Destination token account for remaining tokens"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "fee_recipient",
+          "docs": [
+            "Fee recipient (relayer) - gets operation fee + account rent on close"
+          ],
+          "writable": true
+        },
+        {
+          "name": "zk_verifier"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "enable_token",
+      "docs": [
+        "Enable a token for this agent (creates TokenVaultState + ATA)"
+      ],
+      "discriminator": [
+        218,
+        209,
+        7,
+        249,
+        241,
+        38,
+        212,
+        43
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "SOL vault"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "Token ATA owned by vault PDA (created via CPI)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner signs and pays rent (recoverable on disable)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_per_tx",
+          "type": "u64"
+        },
+        {
+          "name": "daily_limit",
+          "type": "u64"
+        },
+        {
+          "name": "total_limit",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "enable_token_private",
+      "docs": [
+        "Enable a token with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        119,
+        10,
+        202,
+        55,
+        155,
+        219,
+        2,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "fee_payer",
+          "docs": [
+            "Fee payer for account creation (relayer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "zk_verifier"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "max_per_tx",
+          "type": "u64"
+        },
+        {
+          "name": "daily_limit",
+          "type": "u64"
+        },
+        {
+          "name": "total_limit",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "freeze",
       "docs": [
         "Freeze agent (owner only, standard mode) - emergency stop"
@@ -471,7 +1506,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "owner",
@@ -501,7 +1569,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -664,6 +1765,251 @@
       ]
     },
     {
+      "name": "spend_token",
+      "docs": [
+        "Spend tokens from vault ATA (delegate-authorized, constraint-enforced)"
+      ],
+      "discriminator": [
+        214,
+        109,
+        255,
+        231,
+        85,
+        10,
+        34,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "delegate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "SOL vault (for fee reimbursement)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "docs": [
+            "Token ATA owned by vault PDA"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Destination token account (must exist)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "delegate",
+          "signer": true,
+          "relations": [
+            "cloaked_agent_state"
+          ]
+        },
+        {
+          "name": "fee_payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "unfreeze",
       "docs": [
         "Unfreeze agent (owner only, standard mode)"
@@ -681,7 +2027,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "owner",
@@ -711,7 +2090,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -779,7 +2191,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "owner",
@@ -834,7 +2279,40 @@
       "accounts": [
         {
           "name": "cloaked_agent_state",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -904,6 +2382,281 @@
           "name": "expires_at",
           "type": {
             "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_token_constraints",
+      "docs": [
+        "Update per-token constraints (owner-only)"
+      ],
+      "discriminator": [
+        29,
+        133,
+        241,
+        25,
+        171,
+        179,
+        194,
+        135
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "owner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "max_per_tx",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "daily_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "total_limit",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_token_constraints_private",
+      "docs": [
+        "Update per-token constraints with ZK proof (private mode)"
+      ],
+      "discriminator": [
+        20,
+        43,
+        66,
+        67,
+        163,
+        183,
+        71,
+        43
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "max_per_tx",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "daily_limit",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "total_limit",
+          "type": {
+            "option": "u64"
           }
         }
       ]
@@ -1119,6 +2872,478 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "withdraw_token",
+      "docs": [
+        "Withdraw tokens (owner-only, bypasses per-token constraints)"
+      ],
+      "discriminator": [
+        136,
+        235,
+        181,
+        5,
+        101,
+        109,
+        57,
+        81
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Destination token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Owner bypasses constraints"
+          ],
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw_token_private",
+      "docs": [
+        "Withdraw tokens with ZK proof (private mode, bypasses constraints)"
+      ],
+      "discriminator": [
+        87,
+        86,
+        12,
+        171,
+        239,
+        80,
+        22,
+        243
+      ],
+      "accounts": [
+        {
+          "name": "cloaked_agent_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  111,
+                  97,
+                  107,
+                  101,
+                  100,
+                  95,
+                  97,
+                  103,
+                  101,
+                  110,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state.delegate",
+                "account": "CloakedAgentState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_vault_state",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cloaked_agent_state"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "destination_token_account",
+          "docs": [
+            "Destination token account"
+          ],
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        },
+        {
+          "name": "zk_verifier"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "witness_bytes",
+          "type": "bytes"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1134,6 +3359,19 @@
         219,
         189
       ]
+    },
+    {
+      "name": "TokenVaultState",
+      "discriminator": [
+        219,
+        111,
+        48,
+        215,
+        47,
+        26,
+        255,
+        69
+      ]
     }
   ],
   "errors": [
@@ -1144,88 +3382,88 @@
     },
     {
       "code": 6001,
-      "name": "InvalidFee",
-      "msg": "Fee exceeds amount"
-    },
-    {
-      "code": 6002,
       "name": "Overflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6003,
+      "code": 6002,
       "name": "AgentFrozen",
       "msg": "Agent is frozen"
     },
     {
-      "code": 6004,
+      "code": 6003,
       "name": "AgentExpired",
       "msg": "Agent has expired"
     },
     {
-      "code": 6005,
+      "code": 6004,
       "name": "ExceedsPerTxLimit",
       "msg": "Amount exceeds per-transaction limit"
     },
     {
-      "code": 6006,
+      "code": 6005,
       "name": "ExceedsDailyLimit",
       "msg": "Amount exceeds daily limit"
     },
     {
-      "code": 6007,
+      "code": 6006,
       "name": "ExceedsTotalLimit",
       "msg": "Amount exceeds total limit"
     },
     {
-      "code": 6008,
+      "code": 6007,
       "name": "NotOwner",
       "msg": "Unauthorized: not owner"
     },
     {
-      "code": 6009,
-      "name": "NotDelegate",
-      "msg": "Unauthorized: not delegate"
-    },
-    {
-      "code": 6010,
-      "name": "NameTooLong",
-      "msg": "Invalid name: too long"
-    },
-    {
-      "code": 6011,
+      "code": 6008,
       "name": "IsPrivateMode",
       "msg": "Agent is in private mode - use ZK proof instructions"
     },
     {
-      "code": 6012,
+      "code": 6009,
       "name": "NotPrivateMode",
       "msg": "Agent is not in private mode"
     },
     {
-      "code": 6013,
+      "code": 6010,
       "name": "CommitmentMismatch",
       "msg": "Commitment mismatch in ZK proof"
     },
     {
-      "code": 6014,
+      "code": 6011,
       "name": "InvalidProof",
       "msg": "Invalid ZK proof"
     },
     {
-      "code": 6015,
+      "code": 6012,
       "name": "ProofVerificationFailed",
       "msg": "ZK proof verification failed"
     },
     {
-      "code": 6016,
+      "code": 6013,
       "name": "InvalidVerifierProgram",
       "msg": "Invalid ZK verifier program"
     },
     {
-      "code": 6017,
+      "code": 6014,
       "name": "InsufficientBalanceForFee",
       "msg": "Insufficient balance for operation fee"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidCommitment",
+      "msg": "Invalid commitment: cannot be all zeros"
+    },
+    {
+      "code": 6016,
+      "name": "TokenNotEnabled",
+      "msg": "Token not enabled for this agent"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidMint",
+      "msg": "Invalid token mint"
     }
   ],
   "types": [
@@ -1322,7 +3560,7 @@
           {
             "name": "last_day",
             "docs": [
-              "Day tracker for reset (unix_timestamp / 86400)"
+              "Day tracker for reset (unix_timestamp / SECONDS_PER_DAY)"
             ],
             "type": "i64"
           },
@@ -1338,6 +3576,58 @@
             "docs": [
               "Creation timestamp"
             ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TokenVaultState",
+      "docs": [
+        "Per-token constraints and spending tracking",
+        "Seeds: [\"token_vault_state\", agent_state, mint]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent_state",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_per_tx",
+            "type": "u64"
+          },
+          {
+            "name": "daily_limit",
+            "type": "u64"
+          },
+          {
+            "name": "total_limit",
+            "type": "u64"
+          },
+          {
+            "name": "total_spent",
+            "type": "u64"
+          },
+          {
+            "name": "daily_spent",
+            "type": "u64"
+          },
+          {
+            "name": "last_day",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
             "type": "i64"
           }
         ]

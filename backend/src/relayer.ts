@@ -26,8 +26,10 @@ import {
   SystemProgram,
   LAMPORTS_PER_SOL,
   Transaction,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { Program, AnchorProvider, BN, Wallet } from "@coral-xyz/anchor";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import IDL from "./idl.json";
@@ -53,6 +55,8 @@ const CLOAKED_ERROR_CODES: Record<number, { code: string; message: string }> = {
   6012: { code: "ProofVerificationFailed", message: "ZK proof verification failed" },
   6013: { code: "InvalidVerifierProgram", message: "Invalid ZK verifier program" },
   6014: { code: "InsufficientBalanceForFee", message: "Insufficient balance for operation fee" },
+  6015: { code: "TokenNotEnabled", message: "Token not enabled for this agent" },
+  6016: { code: "InvalidMint", message: "Invalid token mint" },
 };
 
 /**
@@ -159,6 +163,35 @@ export interface ClosePrivateParams extends PrivateOperationParams {
 /** Spend co-sign request parameters */
 export interface SpendCosignParams {
   transaction: string; // Base64 encoded serialized transaction
+}
+
+/** Enable token private request parameters */
+export interface EnableTokenPrivateParams extends PrivateOperationParams {
+  mint: string;
+  maxPerTx: number;
+  dailyLimit: number;
+  totalLimit: number;
+}
+
+/** Withdraw token private request parameters */
+export interface WithdrawTokenPrivateParams extends PrivateOperationParams {
+  mint: string;
+  amount: number;
+  destinationTokenAccount: string;
+}
+
+/** Update token constraints private request parameters */
+export interface UpdateTokenConstraintsPrivateParams extends PrivateOperationParams {
+  mint: string;
+  maxPerTx: number | null;
+  dailyLimit: number | null;
+  totalLimit: number | null;
+}
+
+/** Disable token private request parameters */
+export interface DisableTokenPrivateParams extends PrivateOperationParams {
+  mint: string;
+  destinationTokenAccount: string;
 }
 
 /** Create private agent response */
@@ -611,6 +644,212 @@ export class RelayerService {
   }
 
   /**
+   * Enable a token for a private agent via relayer
+   */
+  async enableTokenPrivate(
+    params: EnableTokenPrivateParams,
+    clientIp: string
+  ): Promise<string> {
+    const rateLimit = this.checkRateLimit(clientIp);
+    if (!rateLimit.allowed) {
+      throw new Error(`Rate limit exceeded. Try again in ${Math.ceil(rateLimit.resetIn / 1000 / 60)} minutes.`);
+    }
+
+    const agentStatePda = new PublicKey(params.agentStatePda);
+    const mint = new PublicKey(params.mint);
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), agentStatePda.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+
+    const signature = await this.program.methods
+      .enableTokenPrivate(
+        Buffer.from(params.proofBytes),
+        Buffer.from(params.witnessBytes),
+        new BN(params.maxPerTx),
+        new BN(params.dailyLimit),
+        new BN(params.totalLimit)
+      )
+      .accounts({
+        cloakedAgentState: agentStatePda,
+        tokenVaultState: tokenVaultStatePda,
+        vault: vaultPda,
+        vaultTokenAccount: vaultAta,
+        mint,
+        feeRecipient: this.keypair.publicKey,
+        feePayer: this.keypair.publicKey,
+        zkVerifier: ZK_VERIFIER_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ])
+      .rpc();
+
+    this.incrementRateLimit(clientIp);
+    return signature;
+  }
+
+  /**
+   * Withdraw tokens from a private agent via relayer
+   */
+  async withdrawTokenPrivate(
+    params: WithdrawTokenPrivateParams,
+    clientIp: string
+  ): Promise<string> {
+    const rateLimit = this.checkRateLimit(clientIp);
+    if (!rateLimit.allowed) {
+      throw new Error(`Rate limit exceeded. Try again in ${Math.ceil(rateLimit.resetIn / 1000 / 60)} minutes.`);
+    }
+
+    const agentStatePda = new PublicKey(params.agentStatePda);
+    const mint = new PublicKey(params.mint);
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), agentStatePda.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+    const destinationTokenAccount = new PublicKey(params.destinationTokenAccount);
+
+    const signature = await this.program.methods
+      .withdrawTokenPrivate(
+        Buffer.from(params.proofBytes),
+        Buffer.from(params.witnessBytes),
+        new BN(params.amount)
+      )
+      .accounts({
+        cloakedAgentState: agentStatePda,
+        tokenVaultState: tokenVaultStatePda,
+        vault: vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount,
+        mint,
+        feeRecipient: this.keypair.publicKey,
+        zkVerifier: ZK_VERIFIER_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ])
+      .rpc();
+
+    this.incrementRateLimit(clientIp);
+    return signature;
+  }
+
+  /**
+   * Update token constraints for a private agent via relayer
+   */
+  async updateTokenConstraintsPrivate(
+    params: UpdateTokenConstraintsPrivateParams,
+    clientIp: string
+  ): Promise<string> {
+    const rateLimit = this.checkRateLimit(clientIp);
+    if (!rateLimit.allowed) {
+      throw new Error(`Rate limit exceeded. Try again in ${Math.ceil(rateLimit.resetIn / 1000 / 60)} minutes.`);
+    }
+
+    const agentStatePda = new PublicKey(params.agentStatePda);
+    const mint = new PublicKey(params.mint);
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), agentStatePda.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+
+    const signature = await this.program.methods
+      .updateTokenConstraintsPrivate(
+        Buffer.from(params.proofBytes),
+        Buffer.from(params.witnessBytes),
+        params.maxPerTx !== null ? new BN(params.maxPerTx) : null,
+        params.dailyLimit !== null ? new BN(params.dailyLimit) : null,
+        params.totalLimit !== null ? new BN(params.totalLimit) : null
+      )
+      .accounts({
+        cloakedAgentState: agentStatePda,
+        tokenVaultState: tokenVaultStatePda,
+        vault: vaultPda,
+        mint,
+        feeRecipient: this.keypair.publicKey,
+        zkVerifier: ZK_VERIFIER_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ])
+      .rpc();
+
+    this.incrementRateLimit(clientIp);
+    return signature;
+  }
+
+  /**
+   * Disable a token for a private agent via relayer
+   */
+  async disableTokenPrivate(
+    params: DisableTokenPrivateParams,
+    clientIp: string
+  ): Promise<string> {
+    const rateLimit = this.checkRateLimit(clientIp);
+    if (!rateLimit.allowed) {
+      throw new Error(`Rate limit exceeded. Try again in ${Math.ceil(rateLimit.resetIn / 1000 / 60)} minutes.`);
+    }
+
+    const agentStatePda = new PublicKey(params.agentStatePda);
+    const mint = new PublicKey(params.mint);
+    const [vaultPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), agentStatePda.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const [tokenVaultStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    const vaultAta = getAssociatedTokenAddressSync(mint, vaultPda, true);
+    const destinationTokenAccount = new PublicKey(params.destinationTokenAccount);
+
+    const signature = await this.program.methods
+      .disableTokenPrivate(
+        Buffer.from(params.proofBytes),
+        Buffer.from(params.witnessBytes)
+      )
+      .accounts({
+        cloakedAgentState: agentStatePda,
+        tokenVaultState: tokenVaultStatePda,
+        vault: vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount,
+        mint,
+        feeRecipient: this.keypair.publicKey,
+        zkVerifier: ZK_VERIFIER_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions([
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+      ])
+      .rpc();
+
+    this.incrementRateLimit(clientIp);
+    return signature;
+  }
+
+  /**
    * Co-sign and submit a spend transaction
    *
    * The SDK builds a transaction with the delegate as a signer and the relayer
@@ -649,20 +888,27 @@ export class RelayerService {
       throw new Error(`Invalid program ID. Expected ${CLOAKED_PROGRAM_ID.toBase58()}, got ${ix.programId.toBase58()}`);
     }
 
-    // Validate instruction discriminator is "spend"
-    // From IDL: spend discriminator = [242, 205, 255, 87, 101, 217, 245, 57]
+    // Validate instruction discriminator is "spend" or "spend_token"
     const SPEND_DISCRIMINATOR = Buffer.from([242, 205, 255, 87, 101, 217, 245, 57]);
-    if (ix.data.length < 8 || !ix.data.subarray(0, 8).equals(SPEND_DISCRIMINATOR)) {
-      throw new Error("Invalid instruction: must be a spend instruction");
+    const SPEND_TOKEN_DISCRIMINATOR = Buffer.from([214, 109, 255, 231, 85, 10, 34, 198]);
+
+    const ixDiscriminator = Buffer.from(ix.data.subarray(0, 8));
+    const isSpend = ixDiscriminator.equals(SPEND_DISCRIMINATOR);
+    const isSpendToken = ixDiscriminator.equals(SPEND_TOKEN_DISCRIMINATOR);
+
+    if (!isSpend && !isSpendToken) {
+      throw new Error("Invalid instruction: must be spend or spend_token");
     }
 
-    // Validate delegate signature exists
-    // In spend instruction accounts: [cloaked_agent_state, vault, delegate, fee_payer, destination, system_program]
-    // Delegate is at index 2
-    if (ix.keys.length < 3) {
-      throw new Error("Invalid instruction: missing required accounts");
+    // spend accounts: [cloaked_agent_state, vault, delegate(2), fee_payer(3), destination, system_program]
+    // spend_token accounts: [cloaked_agent_state, token_vault_state, vault, vault_token_account, destination_token_account, mint, delegate(6), fee_payer(7), token_program, system_program]
+    const minAccounts = isSpend ? 6 : 10;
+    const delegateIndex = isSpend ? 2 : 6;
+
+    if (ix.keys.length < minAccounts) {
+      throw new Error(`Invalid instruction: expected at least ${minAccounts} accounts, got ${ix.keys.length}`);
     }
-    const delegatePubkey = ix.keys[2].pubkey;
+    const delegatePubkey = ix.keys[delegateIndex].pubkey;
     const delegateSig = legacyTx.signatures.find(
       (sig) => sig.publicKey.equals(delegatePubkey)
     );

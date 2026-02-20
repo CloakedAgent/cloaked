@@ -9,3 +9,12 @@ export const CLOAKED_PROGRAM_ID = new PublicKey(
 export const ZK_VERIFIER_PROGRAM_ID = new PublicKey(
   "G1fDdFA16d199sf6b8zFhRK1NPZiuhuQCwWWVmGBUG3F"
 );
+
+// Known SPL Token Mints
+export const USDC_MINT_MAINNET = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+export const USDC_MINT_DEVNET = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+
+export const KNOWN_TOKENS: Record<string, { symbol: string; decimals: number; name: string }> = {
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": { symbol: "USDC", decimals: 6, name: "USD Coin" },
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": { symbol: "USDC", decimals: 6, name: "USD Coin (Devnet)" },
+};

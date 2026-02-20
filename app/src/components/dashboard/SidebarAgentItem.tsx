@@ -2,19 +2,21 @@
 
 import { memo, useMemo } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { AgentToken } from "@/hooks";
-import { formatSol } from "@/lib/cloaked";
+import { AgentToken, TokenVaultWithBalance } from "@/hooks";
+import { formatSol, formatToken } from "@/lib/cloaked";
 import { useAgentNames } from "@/contexts/AgentNamesContext";
 import { CLOAKED_PROGRAM_ID } from "@/lib/constants";
 
 interface SidebarAgentItemProps {
   agent: AgentToken;
+  tokenData?: TokenVaultWithBalance;
   isSelected: boolean;
   onClick: () => void;
 }
 
 export const SidebarAgentItem = memo(function SidebarAgentItem({
   agent,
+  tokenData,
   isSelected,
   onClick,
 }: SidebarAgentItemProps) {
@@ -37,7 +39,6 @@ export const SidebarAgentItem = memo(function SidebarAgentItem({
   const statusClass = useMemo(() => {
     if (agent.status === "frozen") return "frozen";
     if (agent.status === "expired") return "expired";
-    // For active, check if there's recent activity (we don't have this data, so just show active)
     return "active";
   }, [agent.status]);
 
@@ -58,9 +59,16 @@ export const SidebarAgentItem = memo(function SidebarAgentItem({
           )}
         </div>
       </div>
-      <span className="agent-balance">
-        {formatSol(agent.balance, 2)}
-      </span>
+      <div className="flex flex-col items-end gap-0.5">
+        <span className="agent-balance">
+          {formatSol(agent.balance, 2)}
+        </span>
+        {tokenData && (
+          <span className="text-[10px] text-[#60a5fa] font-mono">
+            {formatToken(tokenData.balance, tokenData.decimals, tokenData.symbol)}
+          </span>
+        )}
+      </div>
     </div>
   );
 });

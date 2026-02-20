@@ -24,6 +24,14 @@ export function lamportsToSol(lamports: number): number {
 }
 
 /**
+ * Format token amount from native units to human-readable string
+ */
+export function formatToken(amount: number, decimals: number, symbol: string): string {
+  const display = decimals <= 6 ? 2 : 4;
+  return `${(amount / Math.pow(10, decimals)).toFixed(display)} ${symbol}`;
+}
+
+/**
  * Validate a Solana address
  */
 export function isValidSolanaAddress(address: string): boolean {

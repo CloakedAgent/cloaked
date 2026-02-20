@@ -71,3 +71,38 @@ export interface SpendResult {
   remainingBalance: number;
   dailyRemaining: number;
 }
+
+/** Options for spending tokens */
+export interface SpendTokenOptions {
+  destination: PublicKey;  // recipient wallet — SDK derives their ATA
+  mint: PublicKey;
+  amount: number;          // in token native units
+  feePayer?: any;          // optional Signer
+}
+
+/** Options for per-token constraints */
+export interface TokenConstraintOptions {
+  maxPerTx?: number;       // in token native units
+  dailyLimit?: number;
+  totalLimit?: number;
+}
+
+/** Token vault state — per-token constraints and spending tracking */
+export interface TokenVaultState {
+  mint: PublicKey;
+  symbol: string;          // resolved from KNOWN_TOKENS
+  decimals: number;
+  balance: number;         // in token native units
+  depositAddress: PublicKey; // vault's ATA
+  constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+  };
+  spending: {
+    totalSpent: number;
+    dailySpent: number;
+    dailyRemaining: number;
+    totalRemaining: number;
+  };
+}

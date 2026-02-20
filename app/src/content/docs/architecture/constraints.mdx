@@ -127,3 +127,54 @@ await agent.updateConstraints(ownerSigner, {
 <Callout type="info">
 Updates take effect immediately. No restart or recreation needed.
 </Callout>
+
+---
+
+## Token Constraints
+
+Each enabled token has its own independent constraints, separate from SOL.
+
+### Per-Token Limits
+
+When you enable a token, you set constraints just like SOL:
+
+```typescript
+await agent.enableToken(ownerSigner, USDC_MINT, {
+  maxPerTx: 5_000_000,      // 5 USDC per transaction
+  dailyLimit: 50_000_000,   // 50 USDC per day
+  totalLimit: 500_000_000,  // 500 USDC lifetime
+});
+```
+
+<Callout type="info">
+Token amounts use native units. USDC has 6 decimals, so 1 USDC = 1,000,000 native units.
+</Callout>
+
+### How It Works
+
+- Each token gets its own on-chain `TokenVaultState` account
+- Constraints are enforced independently per token
+- SOL constraints and token constraints don't affect each other
+- Same hierarchy applies: frozen check → expiration → per-tx → daily → total
+
+### Example: USDC Configuration
+
+#### Conservative (Testing)
+
+```typescript
+{
+  maxPerTx: 1_000_000,     // 1 USDC
+  dailyLimit: 10_000_000,  // 10 USDC
+  totalLimit: 50_000_000,  // 50 USDC
+}
+```
+
+#### Standard (Active Agent)
+
+```typescript
+{
+  maxPerTx: 5_000_000,      // 5 USDC
+  dailyLimit: 50_000_000,   // 50 USDC
+  totalLimit: 500_000_000,  // 500 USDC
+}
+```

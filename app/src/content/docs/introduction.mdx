@@ -41,7 +41,7 @@ await agent.spend({
 
 Constraints define what an agent can and cannot do:
 
-- **Total Limit**: Maximum SOL the agent can ever spend
+- **Total Limit**: Maximum the agent can ever spend (SOL and USDC tracked separately)
 - **Per-Transaction Limit**: Maximum per single transaction
 - **Daily Limit**: Maximum per 24-hour period
 - **Expiration**: When the agent's access ends
@@ -66,7 +66,7 @@ Cloaked supports two privacy modes:
 
 <Steps>
   <span>**Create a Cloaked Agent** - Define spending limits and constraints</span>
-  <span>**Fund the account** - Deposit SOL into the agent's vault</span>
+  <span>**Fund the account** - Deposit SOL or USDC into the agent's vault</span>
   <span>**Give the agent key to your AI** - It can now spend within limits</span>
   <span>**Monitor and manage** - Track spending, adjust limits, or revoke access</span>
 </Steps>

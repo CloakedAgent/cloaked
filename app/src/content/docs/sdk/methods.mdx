@@ -192,6 +192,170 @@ Closing is permanent. All remaining funds go to the owner.
 
 ---
 
+## Token Operations
+
+Manage USDC tokens with the same constraint enforcement as SOL.
+
+### `getTokenBalance(mint)`
+
+Get the vault's balance for a specific token.
+
+```typescript
+import { PublicKey } from "@solana/web3.js";
+const USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // devnet
+
+const balance = await agent.getTokenBalance(USDC_MINT);
+console.log(`USDC balance: ${balance / 1e6} USDC`);
+```
+
+**Returns:** `number` -Balance in token native units
+
+### `getTokenState(mint)`
+
+Get full token state including constraints and spending.
+
+```typescript
+const state = await agent.getTokenState(USDC_MINT);
+if (state) {
+  console.log({
+    balance: state.balance,
+    symbol: state.symbol,
+    dailyRemaining: state.spending.dailyRemaining,
+    depositAddress: state.depositAddress.toBase58(),
+  });
+}
+```
+
+**Returns:** `TokenVaultState | null`
+
+```typescript
+interface TokenVaultState {
+  mint: PublicKey;
+  symbol: string;
+  decimals: number;
+  balance: number;
+  depositAddress: PublicKey;  // vault's ATA
+  constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+  };
+  spending: {
+    totalSpent: number;
+    dailySpent: number;
+    dailyRemaining: number;
+    totalRemaining: number;
+  };
+}
+```
+
+### `getEnabledTokens()`
+
+List all tokens enabled on this agent.
+
+```typescript
+const tokens = await agent.getEnabledTokens();
+for (const t of tokens) {
+  console.log(`${t.symbol}: ${t.balance / Math.pow(10, t.decimals)}`);
+}
+```
+
+**Returns:** `TokenVaultState[]`
+
+### `enableToken(owner, mint, constraints)`
+
+Enable a token for this agent. Creates on-chain state and ATA.
+
+```typescript
+await agent.enableToken(ownerSigner, USDC_MINT, {
+  maxPerTx: 5_000_000,     // 5 USDC per tx
+  dailyLimit: 50_000_000,  // 50 USDC/day
+  totalLimit: 500_000_000, // 500 USDC lifetime
+});
+```
+
+**Parameters:**
+- `owner`: `Signer` -Agent owner
+- `mint`: `PublicKey` -Token mint address
+- `constraints`: `TokenConstraintOptions`
+
+```typescript
+interface TokenConstraintOptions {
+  maxPerTx?: number;    // in token native units (0 = unlimited)
+  dailyLimit?: number;
+  totalLimit?: number;
+}
+```
+
+**Returns:** `string` -Transaction signature
+
+### `spendToken(options)`
+
+Transfer tokens from the vault to a destination.
+
+```typescript
+const result = await agent.spendToken({
+  destination: new PublicKey("HN7cAB..."),
+  mint: USDC_MINT,
+  amount: 5_000_000,  // 5 USDC
+});
+
+console.log(`Sent! Signature: ${result.signature}`);
+```
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `destination` | `PublicKey` | Recipient wallet (SDK derives their ATA) |
+| `mint` | `PublicKey` | Token mint address |
+| `amount` | `number` | Amount in native units (USDC = 6 decimals) |
+| `feePayer` | `Signer` (optional) | Your wallet pays tx fee directly |
+
+**Returns:** `SpendResult` (same as SOL spend)
+
+<Callout type="info" title="Fee Payment">
+Token spends use the same fee model as SOL -relayer by default, or pass `feePayer` for direct.
+</Callout>
+
+### `updateTokenConstraints(owner, mint, options)`
+
+Update per-token constraints. Pass only the fields to change.
+
+```typescript
+await agent.updateTokenConstraints(ownerSigner, USDC_MINT, {
+  dailyLimit: 100_000_000,  // Increase to 100 USDC/day
+});
+```
+
+**Returns:** `string` -Transaction signature
+
+### `withdrawToken(owner, mint, amount, destination)`
+
+Withdraw tokens from vault. Bypasses constraints.
+
+```typescript
+await agent.withdrawToken(ownerSigner, USDC_MINT, 10_000_000, ownerWallet);
+```
+
+**Returns:** `string` -Transaction signature
+
+### `disableToken(owner, mint, destination)`
+
+Disable a token -transfers remaining balance and closes on-chain state.
+
+```typescript
+await agent.disableToken(ownerSigner, USDC_MINT, ownerWallet);
+```
+
+**Returns:** `string` -Transaction signature
+
+<Callout type="warning">
+Disabling transfers all remaining tokens to the destination and closes the token account.
+</Callout>
+
+---
+
 ## Private Mode (ZK Operations)
 
 Requires private mode agent - available via `forPrivateOwner()` or `createPrivate*()`.
@@ -252,6 +416,42 @@ await agent.closePrivate(new PublicKey("destination..."));
 ```
 
 **Returns:** `string` - Transaction signature
+
+### `enableTokenPrivate(mint, constraints)`
+
+Enable a token using ZK proof of ownership.
+
+```typescript
+await agent.enableTokenPrivate(USDC_MINT, {
+  maxPerTx: 5_000_000,
+  dailyLimit: 50_000_000,
+  totalLimit: 500_000_000,
+});
+```
+
+**Returns:** `string` -Transaction signature
+
+### `updateTokenConstraintsPrivate(mint, options)`
+
+Update per-token constraints using ZK proof.
+
+```typescript
+await agent.updateTokenConstraintsPrivate(USDC_MINT, {
+  dailyLimit: 100_000_000,
+});
+```
+
+**Returns:** `string` -Transaction signature
+
+### `disableTokenPrivate(mint, destinationTokenAccount)`
+
+Disable a token using ZK proof. Pass the destination ATA directly.
+
+```typescript
+await agent.disableTokenPrivate(USDC_MINT, destinationAta);
+```
+
+**Returns:** `string` -Transaction signature
 
 <Callout type="info">
 Private operations require ZK prover initialization. The SDK handles this automatically on first use.

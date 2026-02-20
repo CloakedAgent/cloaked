@@ -4,7 +4,7 @@ import { memo, useState, useMemo, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { PublicKey } from "@solana/web3.js";
-import { AgentToken } from "@/hooks";
+import { AgentToken, TokenSummary, TokenVaultWithBalance } from "@/hooks";
 import { SidebarAgentItem } from "./SidebarAgentItem";
 import { useAgentNames } from "@/contexts/AgentNamesContext";
 import { CLOAKED_PROGRAM_ID } from "@/lib/constants";
@@ -14,6 +14,8 @@ interface DashboardSidebarProps {
   loading: boolean;
   privateAgents?: AgentToken[];
   privateLoading?: boolean;
+  tokenVaultMap?: Map<string, TokenSummary[]>;
+  tokenBalanceMap?: Map<string, TokenVaultWithBalance>;
   isOpen?: boolean;
   onClose?: () => void;
   hasMasterSecret?: boolean;
@@ -26,6 +28,8 @@ export const DashboardSidebar = memo(function DashboardSidebar({
   loading,
   privateAgents = [],
   privateLoading = false,
+  tokenVaultMap,
+  tokenBalanceMap,
   isOpen = false,
   onClose,
   hasMasterSecret,
@@ -195,6 +199,7 @@ export const DashboardSidebar = memo(function DashboardSidebar({
               <SidebarAgentItem
                 key={agent.delegate.toBase58()}
                 agent={agent}
+                tokenData={tokenBalanceMap?.get(agent.address.toBase58())}
                 isSelected={selectedAgentId === agent.delegate.toBase58()}
                 onClick={() => handleAgentClick(agent)}
               />

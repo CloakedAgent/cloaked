@@ -7,9 +7,15 @@ import {
   SystemProgram,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
+import {
+  getAssociatedTokenAddressSync,
+  getAccount,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import { Program, AnchorProvider, BN, Wallet } from "@coral-xyz/anchor";
 import bs58 from "bs58";
-import { CLOAKED_PROGRAM_ID, ZK_VERIFIER_PROGRAM_ID } from "./constants";
+import { CLOAKED_PROGRAM_ID, ZK_VERIFIER_PROGRAM_ID, KNOWN_TOKENS } from "./constants";
 import IDL from "./idl.json";
 import {
   CloakedAgentState,
@@ -17,6 +23,9 @@ import {
   ConstraintOptions,
   SpendOptions,
   SpendResult,
+  SpendTokenOptions,
+  TokenConstraintOptions,
+  TokenVaultState,
 } from "./types";
 import { Signer, keypairToSigner } from "./signer";
 import {
@@ -38,6 +47,9 @@ import {
   closePrivateViaRelayer,
   cosignSpendViaRelayer,
   getRelayerPublicKey,
+  enableTokenPrivateViaRelayer,
+  updateTokenConstraintsPrivateViaRelayer,
+  disableTokenPrivateViaRelayer,
 } from "./relayer";
 
 // Seconds in a day for daily limit calculations
@@ -260,6 +272,26 @@ export class CloakedAgent {
       CLOAKED_PROGRAM_ID
     );
     return vault;
+  }
+
+  /**
+   * Get an Anchor Program instance for this agent's connection
+   */
+  private getProgram(): Program {
+    const dummyWallet = this.keypair
+      ? new Wallet(this.keypair)
+      : {
+          publicKey: this.delegatePubkey,
+          signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => tx,
+          signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => txs,
+        };
+
+    const provider = new AnchorProvider(
+      this.connection,
+      dummyWallet as Wallet,
+      { commitment: "confirmed" }
+    );
+    return new Program(IDL as any, provider);
   }
 
   /**
@@ -744,6 +776,13 @@ export class CloakedAgent {
    * @returns Transaction signature
    */
   async close(owner: Signer): Promise<string> {
+    // Check for enabled tokens before closing
+    const enabledTokens = await this.getEnabledTokens();
+    if (enabledTokens.length > 0) {
+      const symbols = enabledTokens.map(t => t.symbol).join(", ");
+      throw new Error(`Cannot close agent: disable all tokens first (${symbols})`);
+    }
+
     const provider = new AnchorProvider(
       this.connection,
       owner as Wallet,
@@ -1202,6 +1241,470 @@ export class CloakedAgent {
         witnessBytes: Array.from(proofArgs.witnessBytes),
         amount,
         destination: destination.toBase58(),
+      },
+      apiUrl
+    );
+
+    return signature;
+  }
+
+  // ============================================
+  // Token Methods (SPL Token Support)
+  // ============================================
+
+  /**
+   * Get the ATA (Associated Token Account) address for a token on this agent's vault
+   */
+  getTokenDepositAddress(mint: PublicKey): PublicKey {
+    return getAssociatedTokenAddressSync(mint, this.vaultPda, true);
+  }
+
+  /**
+   * Get the token balance for a specific mint
+   * @returns Balance in token native units (0 if ATA doesn't exist)
+   */
+  async getTokenBalance(mint: PublicKey): Promise<number> {
+    const ata = this.getTokenDepositAddress(mint);
+    try {
+      const account = await getAccount(this.connection, ata);
+      return Number(account.amount);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Get the TokenVaultState PDA for a specific mint
+   */
+  static deriveTokenVaultStatePda(agentStatePda: PublicKey, mint: PublicKey): PublicKey {
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    return pda;
+  }
+
+  /**
+   * Get the full token state for a specific mint
+   * @returns TokenVaultState or null if token not enabled
+   */
+  async getTokenState(mint: PublicKey): Promise<TokenVaultState | null> {
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, mint);
+
+    try {
+      const program = this.getProgram();
+      const state = await (program.account as any).tokenVaultState.fetch(tokenStatePda);
+      const balance = await this.getTokenBalance(mint);
+      const mintStr = mint.toBase58();
+      const known = KNOWN_TOKENS[mintStr];
+
+      const dailyLimit = (state.dailyLimit as BN).toNumber();
+      const dailySpent = (state.dailySpent as BN).toNumber();
+      const totalLimit = (state.totalLimit as BN).toNumber();
+      const totalSpent = (state.totalSpent as BN).toNumber();
+
+      const dailyRemaining = dailyLimit > 0
+        ? Math.max(0, dailyLimit - dailySpent)
+        : 0;
+      const totalRemaining = totalLimit > 0
+        ? Math.max(0, totalLimit - totalSpent)
+        : 0;
+
+      return {
+        mint,
+        symbol: known?.symbol ?? "UNKNOWN",
+        decimals: known?.decimals ?? 0,
+        balance,
+        depositAddress: this.getTokenDepositAddress(mint),
+        constraints: {
+          maxPerTx: (state.maxPerTx as BN).toNumber(),
+          dailyLimit,
+          totalLimit,
+        },
+        spending: {
+          totalSpent,
+          dailySpent,
+          dailyRemaining,
+          totalRemaining,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get all enabled tokens for this agent
+   */
+  async getEnabledTokens(): Promise<TokenVaultState[]> {
+    const program = this.getProgram();
+    const accounts = await (program.account as any).tokenVaultState.all([
+      { memcmp: { offset: 8, bytes: this.agentStatePda.toBase58() } },
+    ]);
+
+    const results: TokenVaultState[] = [];
+    for (const acc of accounts) {
+      const mint = acc.account.mint as PublicKey;
+      const state = await this.getTokenState(mint);
+      if (state) results.push(state);
+    }
+    return results;
+  }
+
+  /**
+   * Enable a token for this agent (standard mode, owner-only)
+   * Creates TokenVaultState and ATA for the specified mint
+   */
+  async enableToken(owner: Signer, mint: PublicKey, constraints: TokenConstraintOptions): Promise<string> {
+    const provider = new AnchorProvider(
+      this.connection,
+      owner as Wallet,
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, provider);
+
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, mint);
+    const vaultAta = getAssociatedTokenAddressSync(mint, this.vaultPda, true);
+
+    const signature = await program.methods
+      .enableToken(
+        new BN(constraints.maxPerTx ?? 0),
+        new BN(constraints.dailyLimit ?? 0),
+        new BN(constraints.totalLimit ?? 0),
+      )
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        vault: this.vaultPda,
+        vaultTokenAccount: vaultAta,
+        mint,
+        owner: owner.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return signature;
+  }
+
+  /**
+   * Spend tokens from vault (delegate-authorized, constraint-enforced)
+   * Two modes: with feePayer (direct) or without (via relayer)
+   */
+  async spendToken(options: SpendTokenOptions): Promise<SpendResult> {
+    if (!this.keypair) {
+      throw new Error("Cannot spend in owner mode - requires Agent Key");
+    }
+
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, options.mint);
+    const vaultAta = getAssociatedTokenAddressSync(options.mint, this.vaultPda, true);
+    const destAta = getAssociatedTokenAddressSync(options.mint, options.destination, false);
+
+    if (options.feePayer) {
+      return this.spendTokenWithFeePayer(options, tokenStatePda, vaultAta, destAta);
+    }
+
+    return this.spendTokenViaRelayer(options, tokenStatePda, vaultAta, destAta);
+  }
+
+  private async spendTokenWithFeePayer(
+    options: SpendTokenOptions,
+    tokenStatePda: PublicKey,
+    vaultAta: PublicKey,
+    destAta: PublicKey,
+  ): Promise<SpendResult> {
+    const feePayer = options.feePayer as Signer;
+
+    const provider = new AnchorProvider(
+      this.connection,
+      feePayer as Wallet,
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, provider);
+
+    const spendIx = await program.methods
+      .spendToken(new BN(options.amount))
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        vault: this.vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount: destAta,
+        mint: options.mint,
+        delegate: this.keypair!.publicKey,
+        feePayer: feePayer.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const tx = new Transaction();
+    tx.add(spendIx);
+    tx.feePayer = feePayer.publicKey;
+    tx.recentBlockhash = (await this.connection.getLatestBlockhash()).blockhash;
+
+    tx.partialSign(this.keypair!);
+
+    const signature = await provider.sendAndConfirm(tx, [this.keypair!]);
+    const state = await this.getState();
+
+    return {
+      signature,
+      remainingBalance: state.balance,
+      dailyRemaining: state.spending.dailyRemaining,
+    };
+  }
+
+  private async spendTokenViaRelayer(
+    options: SpendTokenOptions,
+    tokenStatePda: PublicKey,
+    vaultAta: PublicKey,
+    destAta: PublicKey,
+  ): Promise<SpendResult> {
+    const feePayerPubkey = await getRelayerPublicKey();
+
+    const dummyProvider = new AnchorProvider(
+      this.connection,
+      new Wallet(this.keypair!),
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, dummyProvider);
+
+    const spendIx = await program.methods
+      .spendToken(new BN(options.amount))
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        vault: this.vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount: destAta,
+        mint: options.mint,
+        delegate: this.keypair!.publicKey,
+        feePayer: feePayerPubkey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const tx = new Transaction();
+    tx.add(spendIx);
+    tx.feePayer = feePayerPubkey;
+    tx.recentBlockhash = (await this.connection.getLatestBlockhash()).blockhash;
+
+    tx.partialSign(this.keypair!);
+
+    const serializedTx = tx.serialize({ requireAllSignatures: false });
+    const txBase64 = serializedTx.toString("base64");
+
+    const signature = await cosignSpendViaRelayer(txBase64);
+    const state = await this.getState();
+
+    return {
+      signature,
+      remainingBalance: state.balance,
+      dailyRemaining: state.spending.dailyRemaining,
+    };
+  }
+
+  /**
+   * Withdraw tokens (owner-only, bypasses per-token constraints)
+   */
+  async withdrawToken(owner: Signer, mint: PublicKey, amount: number, destination: PublicKey): Promise<string> {
+    const provider = new AnchorProvider(
+      this.connection,
+      owner as Wallet,
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, provider);
+
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, mint);
+    const vaultAta = getAssociatedTokenAddressSync(mint, this.vaultPda, true);
+    const destAta = getAssociatedTokenAddressSync(mint, destination, false);
+
+    const signature = await program.methods
+      .withdrawToken(new BN(amount))
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        vault: this.vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount: destAta,
+        mint,
+        owner: owner.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    return signature;
+  }
+
+  /**
+   * Update per-token constraints (owner-only)
+   */
+  async updateTokenConstraints(owner: Signer, mint: PublicKey, options: TokenConstraintOptions): Promise<string> {
+    const provider = new AnchorProvider(
+      this.connection,
+      owner as Wallet,
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, provider);
+
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, mint);
+
+    const maxPerTx = options.maxPerTx !== undefined ? new BN(options.maxPerTx) : null;
+    const dailyLimit = options.dailyLimit !== undefined ? new BN(options.dailyLimit) : null;
+    const totalLimit = options.totalLimit !== undefined ? new BN(options.totalLimit) : null;
+
+    const signature = await program.methods
+      .updateTokenConstraints(maxPerTx, dailyLimit, totalLimit)
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        mint,
+        owner: owner.publicKey,
+      })
+      .rpc();
+
+    return signature;
+  }
+
+  /**
+   * Disable a token -- transfer remaining tokens to owner, close ATA + state
+   */
+  async disableToken(owner: Signer, mint: PublicKey, destination: PublicKey): Promise<string> {
+    const provider = new AnchorProvider(
+      this.connection,
+      owner as Wallet,
+      { commitment: "confirmed" }
+    );
+    const program = new Program(IDL as any, provider);
+
+    const tokenStatePda = CloakedAgent.deriveTokenVaultStatePda(this.agentStatePda, mint);
+    const vaultAta = getAssociatedTokenAddressSync(mint, this.vaultPda, true);
+    const destAta = getAssociatedTokenAddressSync(mint, destination, false);
+
+    const signature = await program.methods
+      .disableToken()
+      .accounts({
+        cloakedAgentState: this.agentStatePda,
+        tokenVaultState: tokenStatePda,
+        vault: this.vaultPda,
+        vaultTokenAccount: vaultAta,
+        destinationTokenAccount: destAta,
+        mint,
+        owner: owner.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    return signature;
+  }
+
+  /**
+   * Enable a token using ZK proof (private mode only)
+   * Uses relayer to submit transaction
+   */
+  async enableTokenPrivate(
+    mint: PublicKey,
+    constraints: TokenConstraintOptions,
+    apiUrl?: string
+  ): Promise<string> {
+    if (!this._agentSecret || !this._ownerCommitment) {
+      throw new Error("Not in private mode - use enableToken() with owner signer instead");
+    }
+
+    if (!isProverReady()) {
+      throw new Error("ZK prover not initialized. Call initProver() first.");
+    }
+
+    const commitment = bytesToCommitment(this._ownerCommitment);
+    const proof = await generateOwnershipProof(this._agentSecret, commitment);
+    const proofArgs = proofToInstructionArgs(proof);
+
+    const signature = await enableTokenPrivateViaRelayer(
+      {
+        agentStatePda: this.agentStatePda.toBase58(),
+        proofBytes: Array.from(proofArgs.proofBytes),
+        witnessBytes: Array.from(proofArgs.witnessBytes),
+        mint: mint.toBase58(),
+        maxPerTx: constraints.maxPerTx ?? 0,
+        dailyLimit: constraints.dailyLimit ?? 0,
+        totalLimit: constraints.totalLimit ?? 0,
+      },
+      apiUrl
+    );
+
+    return signature;
+  }
+
+  /**
+   * Update per-token constraints using ZK proof (private mode only)
+   * Uses relayer to submit transaction
+   */
+  async updateTokenConstraintsPrivate(
+    mint: PublicKey,
+    options: TokenConstraintOptions,
+    apiUrl?: string
+  ): Promise<string> {
+    if (!this._agentSecret || !this._ownerCommitment) {
+      throw new Error("Not in private mode - use updateTokenConstraints() with owner signer instead");
+    }
+
+    if (!isProverReady()) {
+      throw new Error("ZK prover not initialized. Call initProver() first.");
+    }
+
+    const commitment = bytesToCommitment(this._ownerCommitment);
+    const proof = await generateOwnershipProof(this._agentSecret, commitment);
+    const proofArgs = proofToInstructionArgs(proof);
+
+    const signature = await updateTokenConstraintsPrivateViaRelayer(
+      {
+        agentStatePda: this.agentStatePda.toBase58(),
+        proofBytes: Array.from(proofArgs.proofBytes),
+        witnessBytes: Array.from(proofArgs.witnessBytes),
+        mint: mint.toBase58(),
+        maxPerTx: options.maxPerTx !== undefined ? options.maxPerTx : null,
+        dailyLimit: options.dailyLimit !== undefined ? options.dailyLimit : null,
+        totalLimit: options.totalLimit !== undefined ? options.totalLimit : null,
+      },
+      apiUrl
+    );
+
+    return signature;
+  }
+
+  /**
+   * Disable a token using ZK proof (private mode only)
+   * Uses relayer to submit transaction
+   * @param mint - Token mint to disable
+   * @param destinationTokenAccount - ATA to receive remaining tokens
+   */
+  async disableTokenPrivate(
+    mint: PublicKey,
+    destinationTokenAccount: PublicKey,
+    apiUrl?: string
+  ): Promise<string> {
+    if (!this._agentSecret || !this._ownerCommitment) {
+      throw new Error("Not in private mode - use disableToken() with owner signer instead");
+    }
+
+    if (!isProverReady()) {
+      throw new Error("ZK prover not initialized. Call initProver() first.");
+    }
+
+    const commitment = bytesToCommitment(this._ownerCommitment);
+    const proof = await generateOwnershipProof(this._agentSecret, commitment);
+    const proofArgs = proofToInstructionArgs(proof);
+
+    const signature = await disableTokenPrivateViaRelayer(
+      {
+        agentStatePda: this.agentStatePda.toBase58(),
+        proofBytes: Array.from(proofArgs.proofBytes),
+        witnessBytes: Array.from(proofArgs.witnessBytes),
+        mint: mint.toBase58(),
+        destinationTokenAccount: destinationTokenAccount.toBase58(),
       },
       apiUrl
     );

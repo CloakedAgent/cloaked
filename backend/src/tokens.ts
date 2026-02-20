@@ -7,6 +7,7 @@ import {
   ConfirmedSignatureInfo,
 } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet, BN } from "@coral-xyz/anchor";
+import { getAssociatedTokenAddressSync, getAccount } from "@solana/spl-token";
 import bs58 from "bs58";
 
 /**
@@ -35,6 +36,45 @@ const CLOAKED_PROGRAM_ID = new PublicKey(
 // Seconds in a day for daily limit calculations
 const SECONDS_PER_DAY = 86400;
 
+const KNOWN_TOKENS: Record<string, { symbol: string; decimals: number; name: string }> = {
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": { symbol: "USDC", decimals: 6, name: "USD Coin" },
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": { symbol: "USDC", decimals: 6, name: "USD Coin (Devnet)" },
+};
+
+interface TokenVaultStateAccount {
+  agentState: PublicKey;
+  mint: PublicKey;
+  maxPerTx: BN;
+  dailyLimit: BN;
+  totalLimit: BN;
+  totalSpent: BN;
+  dailySpent: BN;
+  lastDay: BN;
+  bump: number;
+  createdAt: BN;
+}
+
+export interface EnabledTokenInfo {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: number;
+  balanceUnits: number;
+  depositAddress: string;
+  constraints: {
+    maxPerTx: number;
+    dailyLimit: number;
+    totalLimit: number;
+  };
+  spending: {
+    totalSpent: number;
+    dailySpent: number;
+    dailyRemaining: number;
+    totalRemaining: number;
+  };
+}
+
 export interface TokenInfo {
   address: string;
   owner: string;
@@ -57,6 +97,7 @@ export interface TokenInfo {
   };
   status: "active" | "frozen" | "expired";
   createdAt: string;
+  tokens: EnabledTokenInfo[];
 }
 
 export interface TokenHistoryEntry {
@@ -112,6 +153,81 @@ export class TokenService {
       CLOAKED_PROGRAM_ID
     );
     return vault;
+  }
+
+  /**
+   * Derive TokenVaultState PDA
+   */
+  deriveTokenVaultStatePda(agentStatePda: PublicKey, mint: PublicKey): PublicKey {
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("token_vault_state"), agentStatePda.toBuffer(), mint.toBuffer()],
+      CLOAKED_PROGRAM_ID
+    );
+    return pda;
+  }
+
+  /**
+   * Get enabled tokens for an agent
+   */
+  async getEnabledTokens(agentStatePda: PublicKey): Promise<EnabledTokenInfo[]> {
+    try {
+      const accounts = await (this.program.account as any).tokenVaultState.all([
+        { memcmp: { offset: 8, bytes: agentStatePda.toBase58() } },
+      ]);
+
+      const vaultPda = this.deriveVaultPda(agentStatePda);
+      const now = Math.floor(Date.now() / 1000);
+      const currentDay = Math.floor(now / SECONDS_PER_DAY);
+      const results: EnabledTokenInfo[] = [];
+
+      for (const acc of accounts) {
+        const state = acc.account as TokenVaultStateAccount;
+        const mintStr = state.mint.toBase58();
+        const known = KNOWN_TOKENS[mintStr];
+        const decimals = known?.decimals ?? 0;
+
+        // Get ATA balance
+        const ata = getAssociatedTokenAddressSync(state.mint, vaultPda, true);
+        let balance = 0;
+        try {
+          const tokenAcc = await getAccount(this.connection, ata);
+          balance = Number(tokenAcc.amount);
+        } catch {
+          // ATA may not exist yet
+        }
+
+        const dailyLimit = state.dailyLimit.toNumber();
+        const totalLimit = state.totalLimit.toNumber();
+        const lastDay = state.lastDay.toNumber();
+        const dailySpent = currentDay > lastDay ? 0 : state.dailySpent.toNumber();
+        const totalSpent = state.totalSpent.toNumber();
+
+        results.push({
+          mint: mintStr,
+          symbol: known?.symbol ?? "UNKNOWN",
+          name: known?.name ?? "Unknown Token",
+          decimals,
+          balance,
+          balanceUnits: balance / Math.pow(10, decimals),
+          depositAddress: ata.toBase58(),
+          constraints: {
+            maxPerTx: state.maxPerTx.toNumber(),
+            dailyLimit,
+            totalLimit,
+          },
+          spending: {
+            totalSpent,
+            dailySpent,
+            dailyRemaining: dailyLimit > 0 ? Math.max(0, dailyLimit - dailySpent) : -1,
+            totalRemaining: totalLimit > 0 ? Math.max(0, totalLimit - totalSpent) : -1,
+          },
+        });
+      }
+
+      return results;
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -224,6 +340,9 @@ export class TokenService {
       status = "active";
     }
 
+    // Fetch enabled tokens
+    const tokens = await this.getEnabledTokens(agentStatePda);
+
     return {
       address: agentStatePda.toBase58(),
       owner: state.owner.toBase58(),
@@ -249,6 +368,7 @@ export class TokenService {
       },
       status,
       createdAt: new Date(state.createdAt.toNumber() * 1000).toISOString(),
+      tokens,
     };
   }
 
